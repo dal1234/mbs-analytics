@@ -1,0 +1,228 @@
+{
+  "calibration_id": "2026-09_20261111T013759Z",
+  "settings": {
+    "n_paths": 5000,
+    "convergence_paths": [
+      1000,
+      5000,
+      20000
+    ],
+    "seed": 20261110,
+    "sampler": "pseudo",
+    "antithetic": true,
+    "vol": {
+      "type": "market",
+      "sofr_bp": [
+        61.0,
+        90.0,
+        90.0,
+        90.0,
+        90.0
+      ],
+      "y10_bp": [
+        90.0,
+        90.0,
+        90.0,
+        90.0,
+        90.0
+      ],
+      "corr": null,
+      "source": "Solved from the other model's July 2026 SOFR percentiles (P5/P95 3.0/5.0% at 1y, ~0.75/7.0% at 5y); 10-year assumed"
+    }
+  },
+  "computed_utc": "2026-11-11T15:45:46.974642+00:00",
+  "reused": false,
+  "portfolio": {
+    "as_of": "2026-09-30",
+    "file": "sample_portfolio.csv",
+    "positions": 548,
+    "upb": 100000010827.0
+  },
+  "convergence": [
+    {
+      "n_paths": 1000,
+      "years": 1,
+      "income": 5026962145.173088,
+      "shortfall": 41776474.900803566,
+      "shortfall_pct": 0.008241986425450076,
+      "ci_low": 5023535889.150578,
+      "ci_high": 5033114673.333557,
+      "ci_halfwidth_pct_of_baseline": 0.000944888353982627
+    },
+    {
+      "n_paths": 1000,
+      "years": 5,
+      "income": 20791892928.494987,
+      "shortfall": 3446676552.636013,
+      "shortfall_pct": 0.14219801854722275,
+      "ci_low": 20261658429.97522,
+      "ci_high": 21026342607.525433,
+      "ci_halfwidth_pct_of_baseline": 0.015774119387398183
+    },
+    {
+      "n_paths": 5000,
+      "years": 1,
+      "income": 5028837986.232389,
+      "shortfall": 39900633.84150219,
+      "shortfall_pct": 0.007871905977452142,
+      "ci_low": 5027065792.727181,
+      "ci_high": 5030844532.754419,
+      "ci_halfwidth_pct_of_baseline": 0.00037274954485449536
+    },
+    {
+      "n_paths": 5000,
+      "years": 5,
+      "income": 20681647018.624485,
+      "shortfall": 3556922462.5065155,
+      "shortfall_pct": 0.14674638556023173,
+      "ci_low": 20521100838.00703,
+      "ci_high": 20834492559.664165,
+      "ci_halfwidth_pct_of_baseline": 0.006464732209157414
+    },
+    {
+      "n_paths": 20000,
+      "years": 1,
+      "income": 5029681818.076285,
+      "shortfall": 39056801.99760628,
+      "shortfall_pct": 0.007705428297866523,
+      "ci_low": 5028511171.69235,
+      "ci_high": 5030521249.880018,
+      "ci_halfwidth_pct_of_baseline": 0.0001982818940107967
+    },
+    {
+      "n_paths": 20000,
+      "years": 5,
+      "income": 20753590578.615658,
+      "shortfall": 3484978902.5153427,
+      "shortfall_pct": 0.14377824174930348,
+      "ci_low": 20678387085.831715,
+      "ci_high": 20846781609.219757,
+      "ci_halfwidth_pct_of_baseline": 0.0034736893924192293
+    }
+  ],
+  "convergence_pass": true,
+  "tested_paths": 5000,
+  "benchmark_paths": 20000,
+  "sensitivity": [
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "cumulative",
+      "years": 1,
+      "baseline": 5068738620.073892,
+      "income": 5028837986.232389,
+      "shortfall": 39900633.84150219,
+      "shortfall_pct": 0.007871905977452142,
+      "ci_low": 5027065792.727181,
+      "ci_high": 5030844532.754419
+    },
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "cumulative",
+      "years": 2,
+      "baseline": 10060958549.628952,
+      "income": 9808068071.230684,
+      "shortfall": 252890478.39826775,
+      "shortfall_pct": 0.025135823505365137,
+      "ci_low": 9798245274.933163,
+      "ci_high": 9821479616.305891
+    },
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "cumulative",
+      "years": 3,
+      "baseline": 14917401845.299593,
+      "income": 14056072041.857557,
+      "shortfall": 861329803.4420357,
+      "shortfall_pct": 0.05773993436487312,
+      "ci_low": 14004286995.59046,
+      "ci_high": 14099887595.796476
+    },
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "cumulative",
+      "years": 4,
+      "baseline": 19631950342.221905,
+      "income": 17706907988.941307,
+      "shortfall": 1925042353.2805977,
+      "shortfall_pct": 0.09805660261581149,
+      "ci_low": 17555864164.685482,
+      "ci_high": 17793102497.451977
+    },
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "cumulative",
+      "years": 5,
+      "baseline": 24238569481.131,
+      "income": 20681647018.624485,
+      "shortfall": 3556922462.5065155,
+      "shortfall_pct": 0.14674638556023173,
+      "ci_low": 20521100838.00703,
+      "ci_high": 20834492559.664165
+    },
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "annual",
+      "years": 1,
+      "baseline": 5068738620.073892,
+      "income": 5028837986.232389,
+      "shortfall": 39900633.84150219,
+      "shortfall_pct": 0.007871905977452142,
+      "ci_low": 5027065792.727181,
+      "ci_high": 5030844532.754419
+    },
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "annual",
+      "years": 2,
+      "baseline": 4992219929.5550585,
+      "income": 4768822239.383909,
+      "shortfall": 223397690.17114925,
+      "shortfall_pct": 0.04474916837068515,
+      "ci_low": 4759834049.138893,
+      "ci_high": 4785069868.402775
+    },
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "annual",
+      "years": 3,
+      "baseline": 4856443295.670642,
+      "income": 4213109961.3802447,
+      "shortfall": 643333334.2903972,
+      "shortfall_pct": 0.13247005990246144,
+      "ci_low": 4178275566.2381067,
+      "ci_high": 4248039759.195616
+    },
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "annual",
+      "years": 4,
+      "baseline": 4714548496.922315,
+      "income": 3522923464.03922,
+      "shortfall": 1191625032.8830948,
+      "shortfall_pct": 0.2527548573656618,
+      "ci_low": 3469748287.736803,
+      "ci_high": 3584365139.5462294
+    },
+    {
+      "calibration": "base",
+      "official": true,
+      "measure": "annual",
+      "years": 5,
+      "baseline": 4606619138.909094,
+      "income": 2913168608.8752136,
+      "shortfall": 1693450530.0338802,
+      "shortfall_pct": 0.36761244612788,
+      "ci_low": 2835062902.460224,
+      "ci_high": 2991446058.227409
+    }
+  ]
+}

@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MBS Income Risk — Earnings at risk</title>
+<link rel="stylesheet" href="styles.css">
+<script src="data.js"></script>
+<script src="common.js"></script>
+</head><body>
+<div id="top"></div>
+<script>if (window.DATA) header('index.html');</script>
+<div class="subnav"><div class="in"><span class="lbl">Horizon</span><div class="grp" id="hzBtns" role="group" aria-label="Income horizon"></div>
+ <span class="lbl" style="margin-left:8px">Income</span><div class="grp" id="msBtns" role="group" aria-label="Cumulative or annual income"></div><span class="hint" id="hzHint"></span></div></div>
+<div class="wrap">
+<div class="kpis" id="kpis"></div>
+<div id="setupNote" hidden></div>
+<div id="floorNote" hidden></div>
+<div class="row">
+ <div class="card stackc" id="fanCard"><div><h2>Monte Carlo rate fan<i class="i" tabindex="0" data-tip="Percentile bands of the simulated rate. Every path is the baseline plus a zero-mean deviation from the two-factor model, so the fan is centred on the baseline (dashed purple).">i</i></h2><div class="sub" id="fanSub"></div></div>
+  <div class="grp"><div class="lbl" style="width:90px">Rate shown</div><div class="grp" id="fanTenors" role="group" aria-label="Rate to display"></div></div>
+  <div id="fanChart"></div>
+  <div class="legend" id="fanLegend"></div>
+  <div class="note" id="fanNote"></div></div>
+ <div class="card stackc" id="earCard"><div><h2 id="distTitle">Income distribution</h2><div class="sub" id="earSub"></div></div>
+  <div id="earHist"></div><table class="g wrapall"><tbody id="earTable"></tbody></table></div>
+</div>
+
+<div class="tabs" role="tablist" aria-label="Detail views" id="tabBar">
+ <button type="button" role="tab" class="tab" id="tab-cf" aria-controls="tp-cf" aria-selected="false" tabindex="-1" data-tab="cf">Cash flows by outcome</button>
+ <button type="button" role="tab" class="tab" id="tab-mx" aria-controls="tp-mx" aria-selected="false" tabindex="-1" data-tab="mx">Rates and speeds</button>
+ <button type="button" role="tab" class="tab" id="tab-bl" aria-controls="tp-bl" aria-selected="false" tabindex="-1" data-tab="bl">Baseline by month</button>
+ <button type="button" role="tab" class="tab" id="tab-hz" aria-controls="tp-hz" aria-selected="false" tabindex="-1" data-tab="hz">EaR by horizon</button>
+ <button type="button" role="tab" class="tab" id="tab-hist" aria-controls="tp-hist" aria-selected="false" tabindex="-1" data-tab="hist">EaR over time</button>
+ <button type="button" role="tab" class="tab" id="tab-tail" aria-controls="tp-tail" aria-selected="false" tabindex="-1" data-tab="tail">Tail attribution</button>
+</div>
+<div class="tabpanel" role="tabpanel" id="tp-cf" aria-labelledby="tab-cf" hidden>
+<div class="card stackc" id="cfCard"><div><h2 id="cfTitle">Monthly cash flows by outcome<i class="i" tabindex="0" data-tip="Each outcome is the average of the Monte Carlo paths whose income over the horizon ranks around that percentile. Averaging whole paths keeps coupon + reinvestment = income month by month. The baseline is income on the baseline rate path.">i</i></h2><div class="sub" id="cfSub"></div></div>
+ <div class="grp"><div class="lbl" style="width:90px">Outcome</div><div class="grp" id="cfBtns" role="group" aria-label="Outcome shown"></div></div>
+ <div id="cfChart"></div>
+ <div class="legend" id="cfLegend"></div>
+ <div><div class="lbl" id="cfDiffLbl" style="margin-top:6px"></div><div id="cfDiff"></div><div class="legend" id="cfDiffLegend"></div></div>
+ <div class="row" style="gap:20px">
+  <div style="overflow-x:auto"><div class="lbl" style="margin-bottom:4px" id="cfYearLbl"></div><table class="g"><thead><tr><th>Year</th><th>Coupon $m</th><th>Reinvest $m</th><th>Income $m</th><th>Prepaid $m</th><th>Sched $m</th><th>End UPB $bn</th><th>CPR</th><th>SOFR</th><th>30y mtg</th></tr></thead><tbody id="cfYears"></tbody></table></div>
+  <div style="overflow-x:auto"><div class="lbl" style="margin-bottom:4px" id="cfCmpLbl"></div><table class="g"><thead><tr><th>Outcome</th><th>Coupon $m</th><th>Reinvest $m</th><th>Income $m</th><th>Δ vs baseline</th><th>Reinv. share</th><th>Avg CPR</th></tr></thead><tbody id="cfCmp"></tbody></table></div>
+ </div>
+ <div class="note" id="cfNote"></div></div>
+</div>
+<div class="tabpanel" role="tabpanel" id="tp-mx" aria-labelledby="tab-mx" hidden>
+<div class="card stackc" id="mxCard"><div><h2 id="mxTitle">Rates and speeds by outcome<i class="i" tabindex="0" data-tip="The same representative outcomes as the cash-flow chart (paths ranked by income over the horizon, averaged in bands), with the baseline path. CPR by year is annualised from the year's prepaid principal; SOFR and the mortgage rate are averages of the monthly values. Click a row to show that outcome in the cash-flow chart.">i</i></h2><div class="sub" id="mxSub"></div></div>
+ <div class="grp"><div class="lbl" style="width:90px">Metric</div><div class="grp" id="mxBtns" role="group" aria-label="Metric shown"></div></div>
+ <div class="mxwrap"><table class="g mx"><thead id="mxHead"></thead><tbody id="mxBody"></tbody></table></div>
+ <div class="note" id="mxNote"></div></div>
+</div>
+<div class="tabpanel" role="tabpanel" id="tp-bl" aria-labelledby="tab-bl" hidden>
+<div class="card stackc" id="blCard"><div><h2 id="blTitle">Baseline by month<i class="i" tabindex="0" data-tip="The portfolio on the baseline rate path, month by month. Balances are at the start of the month: the balance that month's income is earned on. MBS income is UPB × the pass-through coupon; the WAC is the borrowers' rate and drives prepayment only. Prepaid principal is reinvested at 1M SOFR from the month after it prepays; scheduled principal is not reinvested.">i</i></h2><div class="sub" id="blSub"></div></div>
+ <div class="grp"><div class="lbl" style="width:90px">Rows</div><div class="grp" id="blBtns" role="group" aria-label="Rows shown"></div><button type="button" class="dl" id="blCsv">Download CSV</button></div>
+ <div class="blwrap"><table class="g bl"><thead><tr><th>Month</th><th>MBS UPB $m</th><th>WAC</th><th>Coupon</th><th>UPB earning SOFR $m</th><th>1M SOFR</th><th>MBS income $m</th><th>SOFR income $m</th><th>Total income $m</th></tr></thead><tbody id="blBody"></tbody></table></div>
+ <div class="note" id="blNote"></div></div>
+</div>
+<div class="tabpanel" role="tabpanel" id="tp-hz" aria-labelledby="tab-hz" hidden>
+<div class="card stackc" id="hzCard"><div><h2 id="hzTitle">Earnings at risk by horizon<i class="i" tabindex="0" data-tip="Shortfall = baseline income minus the 5th (or 1st) percentile of simulated income, from the official Monte Carlo run, with a bootstrap interval on the 95% figure. Click a row to switch the page to that year.">i</i></h2><div class="sub" id="hzSub"></div></div>
+ <div style="overflow-x:auto"><table class="g"><thead><tr><th>Year</th><th>Baseline</th><th>Mean</th><th>Mean − baseline</th><th>P5 income</th><th>EaR 95%</th><th>% of baseline</th><th>95% interval</th><th>EaR 99%</th><th>Exp. shortfall 95%</th><th>Calibration range</th></tr></thead><tbody id="hzTable"></tbody></table></div>
+ <div class="note" id="hzNote"></div></div>
+</div>
+<div class="tabpanel" role="tabpanel" id="tp-hist" aria-labelledby="tab-hist" hidden>
+<div class="card stackc" id="histCard"><div><h2 id="histTitle">Earnings at risk over time</h2><div class="sub" id="histSub"></div></div>
+ <div id="histMock"></div>
+ <div id="histChart"></div>
+ <div class="legend" id="histLegend"></div>
+ <details><summary class="lbl" style="cursor:pointer">Values by as-of date</summary><div style="overflow-x:auto"><table class="g" style="margin-top:8px"><thead><tr><th>As of</th><th>Source</th><th>UPB $bn</th><th>Baseline</th><th>Mean</th><th>P5</th><th>P95</th><th>EaR 95%</th><th>% of base</th><th>EaR 99%</th><th>Calibration</th><th>30y mtg</th><th>1M SOFR</th></tr></thead><tbody id="histTable"></tbody></table></div></details></div>
+</div>
+<div class="tabpanel" role="tabpanel" id="tp-tail" aria-labelledby="tab-tail" hidden>
+<div class="card stackc" id="tailCard"><div><h2 id="tailTitle">Who drives the downside — tail attribution by cohort<i class="i" tabindex="0" data-tip="For each cohort: its average income in the worst paths minus its income on the baseline path. The cohort differences add up exactly to the tail's average shortfall against the baseline.">i</i></h2><div class="sub" id="tailSub"></div></div>
+ <div class="grp"><button type="button" class="dl" id="tailAll"></button></div>
+ <div style="overflow-x:auto"><table class="g"><thead><tr><th>Cohort</th><th>CUSIPs</th><th>UPB $m</th><th>Cpn</th><th>WAC</th><th>CPR baseline</th><th>CPR tail</th><th>Baseline income $m</th><th>Tail income $m</th><th>Δ $m</th><th>Share of shortfall</th><th>Δ bp/yr of UPB</th></tr></thead><tbody id="tail"></tbody></table></div>
+ <div class="note">CPR is the average annualised prepayment speed over the horizon. Every measure, year and cohort is in <code>outputs/cohort_tail.csv</code>.</div></div>
+</div>
+</div>
+<script>
+const K = D.kpi, OUT = D.outcomes, Y = D.meta.years, RM = D.rate_model, AS0 = new Date(D.meta.as_of + 'T00:00:00Z');
+const V8 = RM.v58 ? RM.v58.sensitivity : [];
+let HZ = 1, MS = 'cumulative', OC = '50', FT = 'MTG_30Y', TALL = false;
+try { const h = +localStorage.getItem('mbs_hz'); if (h >= 1 && h <= Y) HZ = h; const m = localStorage.getItem('mbs_ms'); if (m === 'annual' || m === 'cumulative') MS = m; } catch (e) {}
+const qlab = q => q === 'baseline' ? 'Baseline' : +q === 50 ? 'Median' : 'P' + q;
+const hlab = () => MS === 'cumulative' ? (HZ === 1 ? '1-year' : `${HZ}-year cumulative`) : `year-${HZ}`;
+const hshort = () => MS === 'cumulative' ? `${HZ}y cum.` : `year ${HZ}`;
+const mlab = m => { const d = new Date(AS0); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + m); /* day 1 first: Sep 30 + 5 months must not overflow into March */ return d.toLocaleDateString('en-US', {month: 'short', year: '2-digit', timeZone: 'UTC'}); };
+const pctOf = v => bad(v) ? '—' : num(100 * v, 2) + '%';
+function niceTicks(lo, hi, n = 5){ const span = Math.max(hi - lo, 1e-9), raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(s => s * mag).find(s => span / s <= n) || 10 * mag; return [Math.floor(lo / step) * step, Math.ceil(hi / step) * step, step]; }
+function spread(labels, gap, top, bottom){ labels.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < gap) labels[i].y = labels[i - 1].y + gap;
+  const over = labels.length ? labels[labels.length - 1].y - bottom : 0; if (over > 0) labels.forEach(l => { l.y -= over; });
+  for (let i = labels.length - 2; i >= 0; i--) if (labels[i + 1].y - labels[i].y < gap) labels[i].y = labels[i + 1].y - gap;
+  return labels.filter(l => l.y >= top - 4); }
+function setH(h){ HZ = h; try { localStorage.setItem('mbs_hz', h); } catch (e) {} render(); }
+function setM(m){ MS = m; try { localStorage.setItem('mbs_ms', m); } catch (e) {} render(); }
+const v8 = (cal, y) => V8.find(r => r.calibration === cal && r.measure === MS && r.years === y);
+const PURPLE = '#7A5AA6';
+
+// ---------------------------------------------------------------- rate fan
+const FAN = D.fan, TEN = [['MTG_30Y', 'Mortgage 30Y'], ['TSY_10Y', '10Y'], ['TSY_2Y', '2Y'], ['SOFR_1M', '1M SOFR']];
+function renderFan(){
+  const s = FAN.series[FT], H = FAN.months.length - 1, hv = s.hist || [], nh = hv.length, hzm = 12 * HZ, hz0 = MS === 'annual' ? 12 * (HZ - 1) : 0;
+  const W = 720, Ht = 270, L = 50, R = 96, T = 30, B = 240;
+  const X = m => L + (m + nh) * (W - L - R) / (nh + H);
+  const all = [...hv, ...s.p05, ...s.p95, ...s.baseline].filter(v => v != null);
+  const [lo, hi, step] = niceTicks(Math.min(...all), Math.max(...all), 6), Yf = v => T + (hi - v) / (hi - lo) * (B - T);
+  const pt = (m, v) => X(m).toFixed(1) + ',' + Yf(v).toFixed(1), dec = step < 0.5 ? 2 : step < 1 ? 1 : 0, x0 = X(0), xh = X(hzm);
+  let g = `<rect x="${L}" y="${T}" width="${(x0 - L).toFixed(1)}" height="${B - T}" fill="#15202B" fill-opacity="0.04"/>`;
+  if (hz0 > 0) g += `<rect x="${X(hz0).toFixed(1)}" y="${T}" width="${(xh - X(hz0)).toFixed(1)}" height="${B - T}" fill="#B23434" fill-opacity="0.05"/>`;
+  for (let v = hi; v >= lo - 1e-9; v -= step) g += `<line x1="${L}" x2="${W - R + 6}" y1="${Yf(v).toFixed(1)}" y2="${Yf(v).toFixed(1)}" stroke="#E3E7EC"/><text x="${L - 6}" y="${(Yf(v) + 3).toFixed(1)}" text-anchor="end">${v.toFixed(dec)}%</text>`;
+  if (nh) g += `<text x="${L + 6}" y="${T + 14}" style="font-weight:600;letter-spacing:1px">ACTUAL</text>`;
+  g += `<text x="${x0 + 6}" y="${T + 14}" style="font-weight:600;letter-spacing:1px">FORECAST</text>`
+    + `<line x1="${x0}" x2="${x0}" y1="${T}" y2="${B}" stroke="#5B6572"/><line x1="${xh}" x2="${xh}" y1="${T}" y2="${B}" stroke="#B23434" stroke-dasharray="3 3"/>`
+    + `<text x="${(hzm > H - 18 ? xh - 4 : xh + 4).toFixed(1)}" y="${T + 28}" text-anchor="${hzm > H - 18 ? 'end' : 'start'}" style="font-weight:600;fill:#B23434">${MS === 'annual' ? 'YEAR ' + HZ : HZ + 'Y HORIZON'}</text>`;
+  for (let m = -nh; m <= H; m += 12) g += `<text x="${X(m).toFixed(1)}" y="${B + 16}" text-anchor="middle"${m === 0 ? ' style="fill:#15202B;font-weight:600"' : ''}>${m === 0 ? 'Today' : (m > 0 ? '+' : MINUS) + Math.abs(m) + 'm'}</text>`;
+  const ms = FAN.months, band = (a, b, c, o) => `<polygon points="${ms.map(m => pt(m, s[a][m])).concat(ms.map(m => pt(m, s[b][m])).reverse()).join(' ')}" fill="${c}" fill-opacity="${o}"/>`;
+  const line = (arr, c, w, d) => `<polyline points="${ms.map(m => pt(m, arr[m])).join(' ')}" fill="none" stroke="${c}" stroke-width="${w}"${d ? ` stroke-dasharray="${d}"` : ''} stroke-linejoin="round"/>`;
+  g += band('p05', 'p95', '#8FB0DC', 0.35) + band('p25', 'p75', '#4F7FBF', 0.3) + line(s.p50, '#15202B', 2.2) + line(s.baseline, PURPLE, 2, '5 3');
+  // actuals run through today's observed rate (month 0), so the last month's move is drawn, not left as a gap
+  if (nh) g += `<polyline points="${[...hv.map((v, i) => v == null ? null : pt(i - nh, v)), pt(0, s.baseline[0])].filter(Boolean).join(' ')}" fill="none" stroke="#15202B" stroke-width="2"/>`;
+  g += `<rect x="${(xh + 1).toFixed(1)}" y="${T}" width="${Math.max(0, X(H) - xh - 1).toFixed(1)}" height="${B - T}" fill="#fff" fill-opacity="0.5"/>`;
+  g += `<circle cx="${x0}" cy="${Yf(s.p50[0]).toFixed(1)}" r="4" fill="#fff" stroke="#15202B" stroke-width="2"/>`;
+  spread([['p95', 'P95', '#4F7FBF'], ['p75', 'P75', '#1F4E8C'], ['p50', 'Median', '#15202B'], ['baseline', 'Baseline', PURPLE], ['p25', 'P25', '#1F4E8C'], ['p05', 'P5', '#4F7FBF']]
+    .map(([k, l, c]) => ({t: `${l} ${s[k][hzm].toFixed(2)}%`, c, y: Yf(s[k][hzm]) + 3, w: k === 'p50' || k === 'baseline' ? 600 : 400})), 12, T, B)
+    .forEach(l => { g += `<text x="${W - R + 10}" y="${l.y.toFixed(1)}" style="fill:${l.c};font-weight:${l.w}">${l.t}</text>`; });
+  $('fanChart').innerHTML = `<svg viewBox="0 0 ${W} ${Ht}" width="100%" role="img" aria-label="${SERIES_NAME[FT]}: ${nh} months of actuals, then Monte Carlo percentile bands over ${H} months around the baseline">${g}</svg>`;
+  $('fanTenors').innerHTML = TEN.map(([k, l]) => `<button type="button" class="tb${FT === k ? ' on' : ''}" aria-pressed="${FT === k}" onclick="FT='${k}';renderFan()">${l}</button>`).join('');
+  const w = 100 * (s.p95[hzm] - s.p05[hzm]), rc = RM.record.calibration;
+  $('fanSub').textContent = `${SERIES_NAME[FT]} · ${K.mc_paths.toLocaleString('en-US')} paths · ${nh} months of actuals, then ${H} months around the ${RM.record.baseline.type} baseline`;
+  const SU = D.meta.setup || {validated: true};
+  $('fanNote').innerHTML = SU.validated
+    ? `P5–P95 width at month ${hzm}: <b>${num(w, 0)} bp</b>. Width comes from the <b>${esc(rc.official)}</b> calibration (${esc(rc.window[0])} to ${esc(rc.window[1])}); the alternatives appear as the calibration range below. See the <a href="whitepaper.html#s6">Rate model</a> page.`
+    : `P5–P95 width at month ${hzm}: <b>${num(w, 0)} bp</b>. Width comes from the <b>market-implied</b> volatility set in config (${esc(SU.vol_description)}), not from the historical calibration.`;
+  const sw = (c, d, wd = 2) => `<svg width="20" height="8" aria-hidden="true"><line x1="0" y1="4" x2="20" y2="4" stroke="${c}" stroke-width="${wd}"${d ? ` stroke-dasharray="${d}"` : ''}/></svg>`;
+  $('fanLegend').innerHTML = `<span>${sw('#15202B', '', 2.2)}Actual, then median</span><span>${sw(PURPLE, '5 3', 2)}Baseline (${esc(RM.record.baseline.type)})</span>`
+    + `<span><span class="sw" style="background:#8FB0DC;opacity:.6"></span>P5–P95</span><span><span class="sw" style="background:#4F7FBF;opacity:.6"></span>P25–P75</span>`; }
+
+// ---------------------------------------------------------------- distribution
+function earHist(e, n, W, H){ const L = 10, Rr = 10, T = 26, Bm = 30, hs = e.hist, ed = e.edges, hm = Math.max(...hs), q = e.pct, f = v => fv(v, 0), c95 = e.conf['95'];
+  const lo = Math.min(ed[0], e.baseline), hi = Math.max(ed[ed.length - 1], e.baseline);
+  const X = v => L + (W - L - Rr) * (v - lo) / (hi - lo), bw = (X(ed[1]) - X(ed[0]));
+  const col = (a, b) => { const m = (a + b) / 2; return m < q['5'] ? '#B23434' : m > q['95'] ? '#C9D1DA' : (m >= q['25'] && m <= q['75']) ? '#4F7FBF' : '#8FB0DC'; };
+  let g = hs.map((h, i) => `<rect x="${(X(ed[i]) + 1).toFixed(1)}" y="${(T + (H - T - Bm) * (1 - h / hm)).toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${((H - T - Bm) * h / hm).toFixed(1)}" fill="${col(ed[i], ed[i + 1])}"><title>${f(ed[i])}–${f(ed[i + 1])} $m: ${h} paths</title></rect>`).join('');
+  for (const [v, lab, c, d] of [[q['5'], 'P5', '#B23434', '3 3'], [q['50'], 'Median', '#15202B', ''], [e.baseline, 'Baseline', PURPLE, '5 3']]) { const x = X(v).toFixed(1);
+    g += `<line x1="${x}" x2="${x}" y1="${T}" y2="${H - Bm}" stroke="${c}" stroke-width="${lab === 'P5' ? 1 : 1.5}" stroke-dasharray="${d}"/>`; }
+  spread([[q['5'], 'P5', '#B23434'], [q['50'], 'Median', '#15202B'], [e.baseline, 'Base', PURPLE]].map(([v, l, c]) => ({t: `${l} ${f(v)}`, c, y: X(v)})), 64, L, W - Rr)
+    .forEach(l => { g += `<text x="${l.y.toFixed(1)}" y="${H - Bm + 12}" text-anchor="middle" style="fill:${l.c}">${l.t}</text>`; });
+  const xb = X(e.baseline), x5 = X(q['5']);
+  g += `<line x1="${x5.toFixed(1)}" x2="${xb.toFixed(1)}" y1="${T - 8}" y2="${T - 8}" stroke="#B23434"/><line x1="${xb.toFixed(1)}" x2="${xb.toFixed(1)}" y1="${T - 12}" y2="${T - 4}" stroke="#B23434"/><line x1="${x5.toFixed(1)}" x2="${x5.toFixed(1)}" y1="${T - 12}" y2="${T - 4}" stroke="#B23434"/>`
+    + `<text x="${((x5 + xb) / 2).toFixed(1)}" y="${T - 13}" text-anchor="middle" style="fill:#B23434;font-weight:600">EaR 95%: $${f(c95.shortfall)}m (${pctOf(c95.shortfall_pct)})</text>`
+    + `<text x="${L}" y="${H - 3}">${hlab()} income, $m · ${n} paths · red = below P5</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Distribution of ${hlab()} income across ${n} Monte Carlo paths, with the baseline">${g}</svg>`; }
+
+// ---------------------------------------------------------------- monthly cash flows by outcome
+const cprOf = (r, a, b) => { let pre = 0, ex = 0; for (let i = a; i < b; i++) { pre += r.prepaid[i]; ex += r.end_upb[i] + r.prepaid[i]; } return ex > 0 ? 100 * (1 - Math.pow(1 - pre / ex, 12)) : 0; };
+function renderCF(){
+  const hz = OUT[MS][HZ - 1], R = hz.rows, B0 = hz.baseline, r = OC === 'baseline' ? B0 : R[OC], n = hz.months, s0 = hz.start, keys = OUT.quantiles.map(String);
+  const W = 1100, H = 250, L = 56, Rr = 70, T = 12, Bt = 222, bw = (W - L - Rr) / n;
+  const lines = [['10', '#B23434', '5 3', R['10']], ['50', '#15202B', '', R['50']], ['90', '#1F7A4D', '5 3', R['90']], ['baseline', PURPLE, '2 2', B0]].filter(x => x[3]);
+  const vmax = Math.max(...r.income, ...lines.flatMap(x => x[3].income)), [lo, hi, step] = niceTicks(0, vmax / 1e6, 5);
+  const Yf = v => Bt - (v / 1e6 - lo) / (hi - lo) * (Bt - T), X = i => L + i * bw;
+  let g = '';
+  for (let v = lo; v <= hi + 1e-9; v += step) g += `<line x1="${L}" x2="${W - Rr}" y1="${Yf(v * 1e6).toFixed(1)}" y2="${Yf(v * 1e6).toFixed(1)}" stroke="#E3E7EC"/><text x="${L - 6}" y="${(Yf(v * 1e6) + 3).toFixed(1)}" text-anchor="end">${num(v, step < 1 ? 1 : 0)}</text>`;
+  for (let i = 0; i < n; i++) { const c = r.interest[i], re = r.reinv[i], x = (X(i) + 0.5).toFixed(1), w = Math.max(1, bw - 1).toFixed(1);
+    g += `<rect x="${x}" y="${Yf(c).toFixed(1)}" width="${w}" height="${(Bt - Yf(c)).toFixed(1)}" fill="#1F4E8C"><title>${mlab(s0 + i + 1)}: coupon $${fv(c)}m</title></rect>`
+      + `<rect x="${x}" y="${Yf(c + re).toFixed(1)}" width="${w}" height="${(Yf(c) - Yf(c + re)).toFixed(1)}" fill="#8FB0DC"><title>${mlab(s0 + i + 1)}: reinvestment $${fv(re)}m · total $${fv(c + re)}m</title></rect>`; }
+  lines.forEach(([q, c, d, x]) => { g += `<polyline points="${x.income.map((v, i) => (X(i) + bw / 2).toFixed(1) + ',' + Yf(v).toFixed(1)).join(' ')}" fill="none" stroke="${c}" stroke-width="${q === '50' || q === 'baseline' ? 2 : 1.5}"${d ? ` stroke-dasharray="${d}"` : ''}/>`; });
+  spread(lines.map(([q, c, , x]) => ({t: qlab(q), c, y: Yf(x.income[n - 1]) + 3})), 11, T, Bt).forEach(l => { g += `<text x="${W - Rr + 6}" y="${l.y.toFixed(1)}" style="fill:${l.c};font-weight:600">${l.t}</text>`; });
+  const tick = n <= 12 ? 3 : 12;
+  for (let i = 0; i < n; i += tick) g += `<text x="${(X(i) + bw / 2).toFixed(1)}" y="${Bt + 14}" text-anchor="middle">${mlab(s0 + i + 1)}</text>`;
+  g += `<text x="${L}" y="${H - 2}">$m per month</text>`;
+  $('cfChart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Monthly coupon and reinvestment income, ${qlab(OC)} outcome">${g}</svg>`;
+  $('cfBtns').innerHTML = [...keys, 'baseline'].map(q => `<button type="button" class="tb${OC === q ? ' on' : ''}" aria-pressed="${OC === q}" onclick="OC='${q}';renderCF();renderMetric()">${qlab(q)}</button>`).join('');
+  $('cfTitle').firstChild.textContent = `Monthly cash flows — ${qlab(OC)}${OC === 'baseline' ? ' path' : ' outcome'}, ${hlab()}`;
+  $('cfSub').textContent = OC === 'baseline' ? `$m · income on the baseline rate path · coupon on the held CUSIPs and income on reinvested prepaid principal at ${reinvLabel()}`
+    : `$m · the average of the ${OUT.paths_per_band} paths whose ${hlab()} income ranks around the ${OC === '50' ? 'median' : qlab(OC)} · coupon and reinvestment at ${reinvLabel()}`;
+  $('cfLegend').innerHTML = `<span><span class="sw" style="background:#1F4E8C"></span>Coupon (${qlab(OC)})</span><span><span class="sw" style="background:#8FB0DC"></span>Reinvestment (${qlab(OC)})</span>`
+    + lines.map(([q, c, d]) => `<span><svg width="20" height="8" aria-hidden="true"><line x1="0" y1="4" x2="20" y2="4" stroke="${c}" stroke-width="2"${d ? ` stroke-dasharray="${d}"` : ''}/></svg>Total income, ${qlab(q)}</span>`).join('');
+  { const H2 = 190, T2 = 12, B2 = 166, dc = r.interest.map((v, i) => v - B0.interest[i]), dr = r.reinv.map((v, i) => v - B0.reinv[i]);
+    const others = keys.map(q => ({q, d: R[q].income.map((v, i) => v - B0.income[i])}));
+    const vals = [...others.flatMap(o => o.d), ...dc.map((v, i) => v + Math.min(0, dr[i])), ...dc.map((v, i) => v + Math.max(0, dr[i])), ...dc, ...dr, 0];
+    const [lo2, hi2, st2] = niceTicks(Math.min(...vals) / 1e6, Math.max(...vals) / 1e6, 4), Y2 = v => T2 + (hi2 - v / 1e6) / (hi2 - lo2) * (B2 - T2);
+    let h = '';
+    for (let v = lo2; v <= hi2 + 1e-9; v += st2) h += `<line x1="${L}" x2="${W - Rr}" y1="${Y2(v * 1e6).toFixed(1)}" y2="${Y2(v * 1e6).toFixed(1)}" stroke="${Math.abs(v) < 1e-9 ? '#9AA4AF' : '#E3E7EC'}"/><text x="${L - 6}" y="${(Y2(v * 1e6) + 3).toFixed(1)}" text-anchor="end">${num(v, st2 < 1 ? 1 : 0)}</text>`;
+    if (OC !== 'baseline') for (let i = 0; i < n; i++) { const x = (X(i) + 0.5).toFixed(1), w = Math.max(1, bw - 1).toFixed(1); let up = 0, dn = 0;
+      [[dc[i], '#1F4E8C', 'coupon'], [dr[i], '#8FB0DC', 'reinvestment']].forEach(([v, c, l]) => { const a0 = v >= 0 ? up : dn, a1 = a0 + v; if (v >= 0) up = a1; else dn = a1;
+        h += `<rect x="${x}" y="${Math.min(Y2(a0), Y2(a1)).toFixed(1)}" width="${w}" height="${Math.abs(Y2(a1) - Y2(a0)).toFixed(1)}" fill="${c}"><title>${mlab(s0 + i + 1)}: ${l} ${fd(v, 2)}m vs baseline</title></rect>`; }); }
+    const OCOL = {5: '#8E2727', 10: '#B23434', 25: '#E39455', 50: '#15202B', 75: '#8FB0DC', 90: '#1F7A4D', 95: '#0F5132'};
+    others.forEach(o => { h += `<polyline points="${o.d.map((v, i) => (X(i) + bw / 2).toFixed(1) + ',' + Y2(v).toFixed(1)).join(' ')}" fill="none" stroke="${OCOL[o.q] || '#5B6572'}" stroke-width="${o.q === OC ? 2.2 : 1.2}" stroke-opacity="${o.q === OC ? 1 : 0.7}"/>`; });
+    spread(others.map(o => ({t: qlab(o.q), c: OCOL[o.q] || '#5B6572', y: Y2(o.d[n - 1]) + 3})), 10, T2, B2).forEach(l => { h += `<text x="${W - Rr + 6}" y="${l.y.toFixed(1)}" style="fill:${l.c};font-weight:600">${l.t}</text>`; });
+    for (let i = 0; i < n; i += tick) h += `<text x="${(X(i) + bw / 2).toFixed(1)}" y="${B2 + 14}" text-anchor="middle">${mlab(s0 + i + 1)}</text>`;
+    $('cfDiff').innerHTML = `<svg viewBox="0 0 ${W} ${H2}" width="100%" role="img" aria-label="Monthly income of each outcome minus the baseline">${h}</svg>`;
+    $('cfDiffLbl').textContent = 'Difference vs the baseline, $m per month' + (OC === 'baseline' ? ' · pick an outcome to split its difference into coupon and reinvestment' : ` · bars split the ${qlab(OC)} difference into coupon and reinvestment`);
+    $('cfDiffLegend').innerHTML = (OC === 'baseline' ? '' : `<span><span class="sw" style="background:#1F4E8C"></span>Coupon vs baseline</span><span><span class="sw" style="background:#8FB0DC"></span>Reinvestment vs baseline</span>`)
+      + '<span>Lines: total income vs baseline for each outcome</span>'; }
+  const yr = [];
+  for (let y = 0; y < Math.ceil(n / 12); y++) { const a = 12 * y, b = Math.min(n, a + 12), sum = k => r[k].slice(a, b).reduce((s, v) => s + v, 0), avg = k => sum(k) / (b - a);
+    yr.push(`<tr><td>Y${(s0 / 12) + y + 1}</td><td>${fv(sum('interest'))}</td><td>${fv(sum('reinv'))}</td><td><b>${fv(sum('income'))}</b></td><td>${fv(sum('prepaid'), 0)}</td><td>${fv(sum('sched'), 0)}</td><td>${num(r.end_upb[b - 1] / 1e9, 2)}</td><td>${fp(cprOf(r, a, b))}</td><td>${fp(avg('sofr'), 2)}</td><td>${fp(avg('mtg'), 2)}</td></tr>`); }
+  $('cfYears').innerHTML = yr.join(''); $('cfYearLbl').textContent = `${qlab(OC)} by year`;
+  const tot = (x, k) => x[k].reduce((s, v) => s + v, 0), bt = tot(B0, 'income');
+  $('cfCmp').innerHTML = [...keys, 'baseline'].map(q => { const x = q === 'baseline' ? B0 : R[q], t = tot(x, 'income'), cp = cprOf(x, 0, n);
+    return `<tr class="click${q === OC ? ' on' : ''}${q === 'baseline' ? ' base' : ''}" onclick="OC='${q}';renderCF();renderMetric()"><td>${qlab(q)}</td><td>${fv(tot(x, 'interest'), 0)}</td><td>${fv(tot(x, 'reinv'), 0)}</td><td><b>${fv(t, 0)}</b></td><td>${q === 'baseline' ? '—' : cell(t - bt, 0)}</td><td>${fp(100 * tot(x, 'reinv') / t)}</td><td>${fp(cp)}</td></tr>`; }).join('');
+  $('cfCmpLbl').textContent = `All outcomes, ${hlab()} totals`;
+  $('cfNote').textContent = `In weak outcomes, falling rates speed up prepayments: less of the book earns the coupon and more is reinvested at a lower SOFR. Each outcome's total is close to, but not exactly, that percentile (the median band totals ${fm(R['50'].total)} vs a median of ${fm(R['50'].pctl)}). Month-by-month values for every outcome, the baseline, measure and year are in outputs/outcome_monthly.csv; CUSIP-level detail in outputs/cusip_monthly_*.csv.`; }
+
+// ---------------------------------------------------------------- metric by outcome and period
+let MX = 'cpr';
+const MXDEF = {cpr: ['CPR', 'annualised prepayment speed', 1], sofr: ['1M SOFR', 'reinvestment rate, set at the start of each month', 2], mtg: ['30Y mortgage rate', 'end of month', 2]};
+function renderMetric(){
+  const hz = OUT[MS][HZ - 1], n = hz.months, s0 = hz.start, keys = OUT.quantiles.map(String), byYear = MS === 'cumulative' && HZ >= 3;
+  const [name, what, dec] = MXDEF[MX];
+  const periods = byYear ? [...Array(Math.ceil(n / 12)).keys()].map(y => [12 * y, Math.min(n, 12 * y + 12), 'Y' + (s0 / 12 + y + 1)])
+                         : [...Array(n).keys()].map(i => [i, i + 1, mlab(s0 + i + 1)]);
+  const val = (r, a, b) => { if (MX === 'cpr') return cprOf(r, a, b);
+    let t = 0; for (let i = a; i < b; i++) t += r[MX][i]; return t / (b - a); };
+  const rows = [...keys.map(q => [q, hz.rows[q]]), ['baseline', hz.baseline]];
+  $('mxHead').innerHTML = `<tr><th>Outcome</th>${periods.map(p => `<th>${p[2]}</th>`).join('')}<th>${byYear ? 'Avg' : 'Horizon'}</th></tr>`;
+  $('mxBody').innerHTML = rows.map(([q, r]) => `<tr class="click${q === OC ? ' on' : ''}${q === 'baseline' ? ' base' : ''}" onclick="OC='${q}';renderCF();renderMetric()"><td>${qlab(q)}</td>`
+    + periods.map(([a, b]) => `<td>${num(val(r, a, b), dec)}</td>`).join('') + `<td><b>${num(val(r, 0, n), dec)}</b></td></tr>`).join('');
+  $('mxBtns').innerHTML = Object.entries(MXDEF).map(([k, [l]]) => `<button type="button" class="tb${MX === k ? ' on' : ''}" aria-pressed="${MX === k}" onclick="MX='${k}';renderMetric()">${l}</button>`).join('');
+  $('mxTitle').firstChild.textContent = `${name} by outcome — ${hlab()}`;
+  $('mxSub').textContent = `% · ${what} · ${byYear ? 'by year' : 'by month'} · outcomes ranked by ${hlab()} income, as in the cash-flow chart`;
+  $('mxNote').textContent = MX === 'cpr' ? 'Read with the SOFR view: where SOFR is above the book coupon, faster prepayment adds income, so CPR need not fall steadily from P5 to P95.'
+    : `Book coupon ${num(K.coupon, 2)}% for comparison. Month-by-month values for every outcome are also in outputs/outcome_monthly.csv.`; }
+
+// ---------------------------------------------------------------- history
+function renderHistory(){
+  const rows = (D.history || []).filter(r => r.years === HZ && r.measure === MS), mock = rows.some(r => r.source === 'mock');
+  $('histTitle').innerHTML = `Earnings at risk over time — ${hlab()} income${mock ? '<span class="mocktag">mock-up</span>' : ''}`;
+  $('histSub').textContent = `$m · each point is one month-end run · the last ${D.meta.months_shown} as-of dates in ${D.meta.history_file}`;
+  $('histMock').innerHTML = mock ? `<div class="mocknote"><b>Mock-up.</b> Earlier points were made by <code>tools/mock_history.py</code>: real rates and baselines for each past month-end with the current calibration, but today's CUSIPs with their ages rolled back. In production each month-end run appends its own row (source "run") from that month's CUSIPs and replaces the mock row. See README section 7.</div>` : '';
+  if (rows.length < 2) { $('histChart').innerHTML = '<div class="note">Not enough history yet: each run of run_model.py adds one as-of date.</div>'; $('histTable').innerHTML = ''; $('histLegend').innerHTML = ''; return; }
+  const W = 760, H = 300, L = 60, Rr = 20, T = 14, B1 = 180, T2 = 206, B2 = 270, n = rows.length;
+  const X = i => L + (i + 0.5) * (W - L - Rr) / n, all = rows.flatMap(r => [r.p5, r.p95, r.baseline]);
+  const [lo, hi, step] = niceTicks(Math.min(...all) / 1e6, Math.max(...all) / 1e6, 4), Yf = v => T + (hi - v / 1e6) / (hi - lo) * (B1 - T);
+  const emax = Math.max(...rows.map(r => r.shortfall99 || r.shortfall95)) / 1e6, [, ehi, estep] = niceTicks(0, emax, 2), Ye = v => B2 - v / 1e6 / ehi * (B2 - T2);
+  let g = '';
+  for (let v = lo; v <= hi + 1e-9; v += step) g += `<line x1="${L}" x2="${W - Rr}" y1="${Yf(v * 1e6).toFixed(1)}" y2="${Yf(v * 1e6).toFixed(1)}" stroke="#E3E7EC"/><text x="${L - 6}" y="${(Yf(v * 1e6) + 3).toFixed(1)}" text-anchor="end">${num(v, 0)}</text>`;
+  const poly = (a, b, c, o) => `<polygon points="${rows.map((r, i) => X(i).toFixed(1) + ',' + Yf(r[a]).toFixed(1)).concat(rows.map((r, i) => X(i).toFixed(1) + ',' + Yf(r[b]).toFixed(1)).reverse()).join(' ')}" fill="${c}" fill-opacity="${o}"/>`;
+  const ln = (k, c, w, d) => `<polyline points="${rows.map((r, i) => X(i).toFixed(1) + ',' + Yf(r[k]).toFixed(1)).join(' ')}" fill="none" stroke="${c}" stroke-width="${w}"${d ? ` stroke-dasharray="${d}"` : ''}/>`;
+  g += poly('p5', 'p95', '#8FB0DC', 0.35) + poly('p25', 'p75', '#4F7FBF', 0.3) + ln('baseline', PURPLE, 2, '5 3') + ln('p50', '#15202B', 2);
+  rows.forEach((r, i) => { g += `<circle cx="${X(i).toFixed(1)}" cy="${Yf(r.p50).toFixed(1)}" r="3" fill="${r.source === 'mock' ? '#fff' : '#15202B'}" stroke="#15202B" stroke-width="1.5"><title>${r.as_of} (${r.source}): baseline ${fm(r.baseline)}, median ${fm(r.p50)}, P5 ${fm(r.p5)}</title></circle>`; });
+  g += `<text x="${L}" y="${T2 - 8}" style="font-weight:600">EaR vs baseline, $m</text>`;
+  for (let v = 0; v <= ehi + 1e-9; v += estep) g += `<line x1="${L}" x2="${W - Rr}" y1="${Ye(v * 1e6).toFixed(1)}" y2="${Ye(v * 1e6).toFixed(1)}" stroke="#E3E7EC"/><text x="${L - 6}" y="${(Ye(v * 1e6) + 3).toFixed(1)}" text-anchor="end">${num(v, 0)}</text>`;
+  const bw = Math.min(28, (W - L - Rr) / n * 0.6);
+  rows.forEach((r, i) => { const x = X(i) - bw / 2;
+    g += `<rect x="${x.toFixed(1)}" y="${Ye(r.shortfall99).toFixed(1)}" width="${bw.toFixed(1)}" height="${(B2 - Ye(r.shortfall99)).toFixed(1)}" fill="#F1BFBF"><title>${r.as_of}: EaR 99% ${fm(r.shortfall99)}</title></rect>`
+      + `<rect x="${x.toFixed(1)}" y="${Ye(r.shortfall95).toFixed(1)}" width="${bw.toFixed(1)}" height="${(B2 - Ye(r.shortfall95)).toFixed(1)}" fill="#B23434"><title>${r.as_of}: EaR 95% ${fm(r.shortfall95)} (${pctOf(r.shortfall95_pct)} of baseline)</title></rect>`
+      + `<text x="${X(i).toFixed(1)}" y="${H - 14}" text-anchor="middle"${i === n - 1 ? ' style="fill:#15202B;font-weight:600"' : ''}>${new Date(r.as_of + 'T00:00:00Z').toLocaleDateString('en-US', {month: 'short', year: '2-digit', timeZone: 'UTC'})}</text>`
+      + `<text x="${X(i).toFixed(1)}" y="${H - 3}" text-anchor="middle" style="fill:${r.source === 'mock' ? '#A84F15' : '#1F7A4D'};font-size:8px">${r.source}</text>`; });
+  $('histChart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${hlab()} income percentiles, baseline and EaR over the last ${n} as-of dates">${g}</svg>`;
+  $('histLegend').innerHTML = `<span><svg width="20" height="8" aria-hidden="true"><line x1="0" y1="4" x2="20" y2="4" stroke="#15202B" stroke-width="2"/></svg>Median</span><span><svg width="20" height="8" aria-hidden="true"><line x1="0" y1="4" x2="20" y2="4" stroke="${PURPLE}" stroke-width="2" stroke-dasharray="5 3"/></svg>Baseline</span>`
+    + `<span><span class="sw" style="background:#8FB0DC;opacity:.6"></span>P5–P95</span><span><span class="sw" style="background:#4F7FBF;opacity:.6"></span>P25–P75</span><span><span class="sw" style="background:#B23434"></span>EaR 95%</span><span><span class="sw" style="background:#F1BFBF"></span>EaR 99%</span><span>○ mock · ● run</span>`;
+  $('histTable').innerHTML = rows.slice().reverse().map(r => `<tr><td>${r.as_of}</td><td>${r.source === 'mock' ? '<span class="mocktag" style="margin:0">mock</span>' : 'run'}</td><td>${num(r.upb / 1e9, 2)}</td><td>${fv(r.baseline, 0)}</td><td>${fv(r.mean, 0)}</td><td>${fv(r.p5, 0)}</td><td>${fv(r.p95, 0)}</td><td>${fv(r.shortfall95)}</td><td>${pctOf(r.shortfall95_pct)}</td><td>${fv(r.shortfall99)}</td><td>${esc(String(r.calibration_id).split('_')[0])}</td><td>${fp(r.mtg_30y, 2)}</td><td>${fp(r.sofr_1m, 2)}</td></tr>`).join(''); }
+
+// ---------------------------------------------------------------- tail attribution
+function renderTail(){
+  const t = D.tails[MS][HZ - 1], rows = t.rows, show = TALL ? rows : rows.slice(0, 25), tot = k => rows.reduce((a, r) => a + (r[k] || 0), 0), U = tot('upb');
+  $('tailTitle').firstChild.textContent = `Who drives the downside — tail attribution by cohort, ${hlab()}`;
+  $('tailSub').textContent = `Tail = the worst ${t.tail_paths} of ${K.mc_paths} paths (${D.meta.tail_pct}%) by ${hlab()} income · grouped by ${D.meta.cohort_by.join(', ')} · tail shortfall vs baseline ${fm(t.shortfall)} · largest contributors first`;
+  $('tail').innerHTML = show.map(r => `<tr><td>${esc(r.cohort)}</td><td>${r.positions}</td><td>${fv(r.upb, 0)}</td><td>${num(r.coupon, 2)}</td><td>${num(r.wac, 2)}</td><td>${fp(r.cpr_base)}</td><td>${fp(r.cpr_tail)}</td><td>${fv(r.income_base)}</td><td>${fv(r.income_tail)}</td><td>${cell(r.delta)}</td><td>${r.share == null ? '—' : fp(100 * r.share)}</td><td>${fbp(r.delta_bp_of_upb)}</td></tr>`).join('')
+    + `<tr class="base"><td>Total</td><td>${tot('positions')}</td><td>${fv(U, 0)}</td><td></td><td></td><td></td><td></td><td>${fv(tot('income_base'))}</td><td>${fv(tot('income_tail'))}</td><td>${cell(tot('delta'))}</td><td>100.0%</td><td>${fbp(1e4 * tot('delta') / U / (MS === 'cumulative' ? HZ : 1))}</td></tr>`;
+  $('tailAll').textContent = TALL ? 'Show top 25' : `Show all ${rows.length}`; $('tailAll').hidden = rows.length <= 25; }
+$('tailAll').onclick = () => { TALL = !TALL; renderTail(); };
+
+// ---------------------------------------------------------------- baseline by month
+const BM = D.baseline_monthly; let BLY = 'month';
+function renderBaseline(){
+  if (!BM) { $('blBody').innerHTML = '<tr><td colspan="9">Not in this run\'s data (rerun run_model.py).</td></tr>'; return; }
+  const n = BM.date.length, tot = i => BM.interest[i] + BM.reinv[i];
+  const yrRow = y => { const a = 12 * y, b = Math.min(n, a + 12), sum = k => BM[k].slice(a, b).reduce((x, v) => x + v, 0);
+    return `<tr class="base"><td>Year ${y + 1}</td><td>${fv(BM.upb[a], 0)}</td><td></td><td></td><td>${fv(BM.reinv_bal[a], 0)}</td><td>${num(BM.sofr.slice(a, b).reduce((x, v) => x + v, 0) / (b - a), 2)}%</td><td>${fv(sum('interest'), 0)}</td><td>${fv(sum('reinv'), 0)}</td><td><b>${fv(sum('interest') + sum('reinv'), 0)}</b></td></tr>`; };
+  let h = '';
+  for (let y = 0; y * 12 < n; y++) {
+    if (BLY === 'month') for (let i = 12 * y; i < Math.min(n, 12 * y + 12); i++)
+      h += `<tr><td>${i + 1} · ${mlab(i + 1)}</td><td>${fv(BM.upb[i], 0)}</td><td>${num(BM.wac[i], 3)}%</td><td>${num(BM.coupon[i], 3)}%</td><td>${fv(BM.reinv_bal[i], 0)}</td><td>${num(BM.sofr[i], 2)}%</td><td>${fv(BM.interest[i])}</td><td>${fv(BM.reinv[i])}</td><td>${fv(tot(i))}</td></tr>`;
+    h += yrRow(y); }
+  $('blBody').innerHTML = h;
+  $('blBtns').innerHTML = [['month', 'Months + year totals'], ['year', 'Year totals']].map(([k, l]) => `<button type="button" class="tb${BLY === k ? ' on' : ''}" aria-pressed="${BLY === k}" onclick="BLY='${k}';renderBaseline()">${l}</button>`).join('');
+  const T = BM.interest.reduce((a, v) => a + v, 0) + BM.reinv.reduce((a, v) => a + v, 0);
+  $('blSub').textContent = `${RM.record.baseline.description} · ${n} months from ${D.meta.as_of} · balances at the start of each month · year rows: UPB at the start of the year, average SOFR, income summed`;
+  $('blNote').innerHTML = `${n / 12}-year baseline income ${fm(T)}: the figure every shortfall is measured against (year 1 ${fm(BM.interest.slice(0, 12).reduce((a, v) => a + v, 0) + BM.reinv.slice(0, 12).reduce((a, v) => a + v, 0))}). MBS UPB plus the SOFR balance falls over time because scheduled principal is not reinvested (${D.model.reinvest_scheduled ? 'on in this run' : 'income.reinvest_scheduled_principal in config/model.yaml'}). Per-CUSIP detail: <code>outputs/cusip_monthly_baseline.csv</code>.`; }
+$('blCsv').onclick = () => { if (!BM) return;
+  const head = 'month,date,mbs_upb,wac,coupon,upb_earning_sofr,sofr_1m,mbs_income,sofr_income,total_income,scheduled_principal,prepaid_upb';
+  const rows = BM.date.map((d, i) => [i + 1, d, BM.upb[i].toFixed(2), BM.wac[i], BM.coupon[i], BM.reinv_bal[i].toFixed(2), BM.sofr[i], BM.interest[i].toFixed(2), BM.reinv[i].toFixed(2), (BM.interest[i] + BM.reinv[i]).toFixed(2), BM.sched[i].toFixed(2), BM.prepaid[i].toFixed(2)].join(','));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([[head, ...rows].join('\n')], {type: 'text/csv'}));
+  a.download = `baseline_by_month_${D.meta.as_of}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
+
+// ---------------------------------------------------------------- tabs
+const TABS = [...document.querySelectorAll('#tabBar .tab')].map(b => b.dataset.tab);
+let TAB = 'cf';
+try { const t = localStorage.getItem('mbs_tab'); if (TABS.includes(t)) TAB = t; } catch (e) {}
+{ const hsh = location.hash.replace('#', ''); if (TABS.includes(hsh)) TAB = hsh; }
+function setTab(t, focus){ TAB = t; try { localStorage.setItem('mbs_tab', t); } catch (e) {}
+  TABS.forEach(k => { const on = k === t, b = $('tab-' + k); b.classList.toggle('on', on); b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; $('tp-' + k).hidden = !on; });
+  if (focus) $('tab-' + t).focus(); }
+$('tabBar').addEventListener('click', e => { const b = e.target.closest('.tab'); if (b) setTab(b.dataset.tab); });
+$('tabBar').addEventListener('keydown', e => { const i = TABS.indexOf(TAB), k = {ArrowRight: 1, ArrowLeft: -1}[e.key];
+  if (k) { e.preventDefault(); setTab(TABS[(i + k + TABS.length) % TABS.length], true); }
+  else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); setTab(TABS[e.key === 'Home' ? 0 : TABS.length - 1], true); } });
+setTab(TAB);
+
+// ---------------------------------------------------------------- set-up note (comparison configurations only)
+{ const s = D.meta.setup;
+  if (s && !s.validated) { $('setupNote').hidden = false;
+    $('setupNote').innerHTML = `<div class="mocknote"><b>Comparison set-up: ${esc(s.label)}.</b> Rate volatility is market-implied (${esc(s.vol_description)}); baseline: ${esc(s.baseline_description)}. This emulates another model for comparison and is not the validated rate model; EaR from the official set-up is in ${s.compare && s.compare.built ? `the <a href="${esc(s.compare.href)}">${esc(s.compare.label)}</a> dashboard` : 'the official dashboard'}.</div>`; } }
+
+// ---------------------------------------------------------------- page
+function render(){
+  const e = D.ear[MS][HZ - 1], t = D.ear_tail[MS][HZ - 1], c = e.conf['95'], c99 = t.conf['99'], es = t.es['95'];
+  $('hzBtns').innerHTML = D.ear[MS].map(x => `<button type="button" class="tb${x.years === HZ ? ' on' : ''}" aria-pressed="${x.years === HZ}" onclick="setH(${x.years})">${MS === 'cumulative' ? x.years + 'y' : 'Y' + x.years}</button>`).join('');
+  $('msBtns').innerHTML = [['cumulative', 'Cumulative'], ['annual', 'Annual']].map(([k, l]) => `<button type="button" class="tb${MS === k ? ' on' : ''}" aria-pressed="${MS === k}" onclick="setM('${k}')">${l}</button>`).join('');
+  $('hzHint').textContent = MS === 'cumulative' ? `income from ${D.meta.as_of} to the end of year ${HZ}` : `income in year ${HZ} alone (months ${12 * HZ - 11}–${12 * HZ})`;
+  $('hzHint').title = $('hzHint').textContent;
+  const rng = ['recent', 'high_vol'].map(n => v8(n, HZ)).filter(Boolean);
+  $('kpis').innerHTML = [
+    ['Portfolio UPB', fm(K.upb), `Cpn ${num(K.coupon, 2)} · WAC ${num(K.wac, 2)} · WAL ${num(K.wal, 1)}y`, 'Current face of the CUSIPs at the portfolio date, with the face-weighted coupon, borrower rate (WAC) and projected average life with rates held at today\'s levels.'],
+    [`Baseline income · ${hshort()}`, fm(e.baseline), `${fm(e.interest_base)} coupon + ${fm(e.reinv_base)} reinvest`, 'Income on the baseline rate path, run through the same engine. Every shortfall is measured against it.'],
+    ['EaR 95%', fms(-c.shortfall), `${pctOf(c.shortfall_pct)} of baseline · 95% interval ${fv(c.shortfall_ci[0], 0)}–${fv(c.shortfall_ci[1], 0)}m`, 'Baseline income minus the 5th percentile of simulated income in the official run. The interval is a bootstrap with antithetic pairs resampled together.'],
+    ['P5 income', fm(c.income), `1 path in 20 earns less · ${K.mc_paths.toLocaleString('en-US')} paths`, 'The 5th percentile of simulated income over the horizon.'],
+    ['Mean vs baseline', fpc(100 * e.mean_minus_baseline_pct, 2), `mean ${fm(e.mean)} · convexity of income`, 'Mean simulated income minus baseline income, as a share of baseline. Income is a nonlinear function of rates, so the two differ: a measure of convexity, not an error.'],
+    ['EaR 99%', fms(-c99.shortfall), `${pctOf(c99.shortfall_pct)} of baseline · ${K.tail_paths.toLocaleString('en-US')} paths`, 'Baseline income minus the 1st percentile. A 99% measure needs about 5,000 paths (whitepaper section 7).'],
+    ['Expected shortfall 95%', fms(-es.shortfall), `${pctOf(es.shortfall_pct)} · average of the worst 5% · ${K.tail_paths.toLocaleString('en-US')} paths`, 'Baseline income minus the average income of the worst 5% of paths.'],
+    ['Calibration range', rng.length ? (() => { const lo = 100 * Math.min(...rng.map(r => r.shortfall_pct)), hi = 100 * Math.max(...rng.map(r => r.shortfall_pct)), d = hi >= 10 && Math.round(lo) !== Math.round(hi) ? 0 : 1; return `${num(lo, d)}–${num(hi, d)}%`; })() : '—', rng.length ? `recent / high_vol · official ${pctOf(c.shortfall_pct)}` : 'V8 not run', 'EaR 95% under the two alternative named calibrations (V8): the model-risk range reported beside the official figure.'],
+  ].map(([l, v, s, tp]) => `<div class="kpi"><div class="l">${l}${tip(tp)}</div><div class="v" title="${String(v).replace(/<[^>]*>/g, '')}">${v}</div><div class="s" title="${String(s).replace(/<[^>]*>/g, '').replace(/"/g, '&quot;')}">${s}</div></div>`).join('');
+  // V4 (whitepaper 11): shown only at horizons where the alternative-floor rerun moves EaR 95% by $0.5m or more;
+  // a quiet information line unless the change is 5% of EaR or more
+  const v4 = RM.v4, fr = v4.triggered ? v4.rows.find(r => r.measure === MS && r.years === HZ) : null;
+  const fdelta = fr ? fr.shortfall - fr.official_shortfall : 0, fshow = fr && Math.abs(fdelta) >= 5e5;
+  if (fshow) {
+    const RN = {short: '1M SOFR', y10: 'the 10-year yield', mort: 'the mortgage rate'};
+    const [rk, share] = Object.entries(v4.share_touching || {}).sort((a, b) => b[1] - a[1])[0] || ['short', 0];
+    const big = Math.abs(fdelta) >= 0.05 * fr.official_shortfall;
+    $('floorNote').innerHTML = `<div class="${big ? 'mocknote' : 'infonote'}"><b>Rate floor (V4):</b> ${RN[rk] || rk} reaches ${num(100 * v4.floor, 0)}% on ${num(100 * share, 1)}% of paths within ${Y} years (trigger ${num(100 * v4.trigger, 0)}%). `
+      + `With a ${fpc(100 * v4.alt_floor, 2)} floor, EaR 95% for this horizon would be ${fm(Math.abs(fdelta))} ${fdelta > 0 ? 'higher' : 'lower'} `
+      + `(${fm(fr.shortfall)}, ${pctOf(fr.shortfall_pct)}, against ${fm(fr.official_shortfall)}, ${pctOf(fr.official_shortfall_pct)}, reported).${tip('Whitepaper section 11, test V4: when more than ' + num(100 * v4.trigger, 0) + '% of paths touch the floor, EaR is rerun with the alternative floor and the difference disclosed. The reported figure keeps the official floor. Horizons where the rerun changes EaR by less than $0.5m show no note.')}</div>`;
+  } else $('floorNote').innerHTML = '';
+  $('floorNote').hidden = !fshow;
+  $('distTitle').innerHTML = `Income distribution — ${hlab()}${tip('Simulated income over the horizon on every path, with the baseline income. EaR is the distance from the baseline down to the 5th percentile.')}`;
+  $('earSub').textContent = `${K.mc_paths.toLocaleString('en-US')} paths (seed ${K.seed}) · each path moves prepayments, coupon income and the reinvestment rate together`;
+  $('earHist').innerHTML = earHist(e, K.mc_paths, 520, 176);
+  $('earTable').innerHTML = [
+    ['Baseline / mean', `${fm(e.baseline)} / ${fm(e.mean)} (${fpc(100 * e.mean_minus_baseline_pct, 2)})`],
+    ['P5 income (95% interval)', `${fm(c.income)} (${fm(c.ci_low)} – ${fm(c.ci_high)})`],
+    ['EaR 95%', `${fms(-c.shortfall)} · ${pctOf(c.shortfall_pct)} of baseline`],
+    [`EaR 99% (${K.tail_paths.toLocaleString('en-US')} paths)`, `${fms(-c99.shortfall)} · ${pctOf(c99.shortfall_pct)} (P1 ${fm(c99.income)})`],
+    [`Expected shortfall 95% / 99% (${K.tail_paths.toLocaleString('en-US')})`, `${fms(-es.shortfall)} / ${fms(-t.es['99'].shortfall)}`],
+    ['Avg CPR: baseline / mean (P5–P95)', `${fp(e.cpr.baseline)} / ${fp(e.cpr.mean)} (${num(e.cpr.p5, 1)}–${num(e.cpr.p95, 1)}%)`],
+    ['Skew', num(e.skew, 2) + (e.skew < -0.3 ? ' (long left tail)' : '')],
+  ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
+  $('hzTitle').firstChild.textContent = `Earnings at risk by horizon — ${MS} income`;
+  $('hzSub').textContent = `$m · ${MS === 'cumulative' ? 'income from the as-of date to the end of each year' : 'income in each year alone'} · shortfalls against the ${RM.record.baseline.type} baseline`;
+  $('hzTable').innerHTML = D.ear[MS].map((x, i) => { const cc = x.conf['95'], tt = D.ear_tail[MS][i], r8 = ['recent', 'high_vol'].map(n => v8(n, x.years)).filter(Boolean);
+    return `<tr class="click${x.years === HZ ? ' on' : ''}" onclick="setH(${x.years})"><td>${MS === 'cumulative' ? (x.years === 1 ? 'Year 1' : 'Years 1–' + x.years) : 'Year ' + x.years}</td><td>${fv(x.baseline, 0)}</td><td>${fv(x.mean, 0)}</td><td>${fpc(100 * x.mean_minus_baseline_pct, 2)}</td><td>${fv(cc.income, 0)}</td><td>${fd(-cc.shortfall)}</td><td>${pctOf(cc.shortfall_pct)}</td><td>${fv(cc.shortfall_ci[0], 0)}–${fv(cc.shortfall_ci[1], 0)}</td><td>${fd(-tt.conf['99'].shortfall)}</td><td>${fd(-tt.es['95'].shortfall)}</td><td>${r8.length ? r8.map(r => pctOf(r.shortfall_pct)).join(' / ') : '—'}</td></tr>`; }).join('');
+  const bench = RM.v58 ? RM.v58.benchmark_paths : 0, tested = RM.v58 ? RM.v58.tested_paths : 0, conv = RM.v58 ? RM.v58.convergence.filter(r => r.n_paths === bench) : [];
+  $('hzNote').innerHTML = `Calibration range = EaR 95% as % of baseline under the <i>recent</i> / <i>high_vol</i> calibrations (V8${RM.v58 ? ', computed ' + esc(RM.v58.computed_utc.slice(0, 10)) + ' for calibration ' + esc(RM.v58.calibration_id) : ''}). `
+    + (RM.v58 && !RM.v58.convergence_pass ? `<b>V5 convergence fails:</b> the ${(bench || 0).toLocaleString('en-US')}-path 5th percentile lies outside the official ${(tested || 0).toLocaleString('en-US')}-path interval. ${(bench || 0).toLocaleString('en-US')}-path EaR 95% (cumulative): ${conv.map(r => r.years + 'y ' + fm(r.shortfall)).join(', ')}. See the <a href="whitepaper.html#res-s11">Rate model</a> page, section 11.` : '');
+  renderFan(); renderCF(); renderMetric(); renderBaseline(); renderHistory(); renderTail(); }
+render();
+</script>
+</body></html>

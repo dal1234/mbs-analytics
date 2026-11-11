@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MBS Income Risk — Rate model</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .wp { max-width: 880px; margin: 0 auto; padding: 24px 20px 64px; color: inherit;
+        font: 15px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wp h1 { font-size: 27px; line-height: 1.25; margin: 0 0 6px; }
+  .wp h2 { font-size: 20px; margin: 40px 0 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(128,128,128,.35); }
+  .wp h3 { font-size: 16px; margin: 24px 0 6px; }
+  .wp p, .wp li { margin: 0 0 10px; }
+  .wp ul, .wp ol { padding-left: 22px; margin: 0 0 12px; }
+  .wp .meta { opacity: .75; font-size: 13px; margin-bottom: 22px; }
+  .wp .box { border: 1px solid rgba(128,128,128,.4); border-left: 4px solid #2f6fb3; border-radius: 4px;
+             padding: 12px 16px; margin: 16px 0; background: rgba(128,128,128,.07); }
+  .wp .eq { font-family: "Cambria Math", Cambria, Georgia, serif; font-size: 16px; padding: 8px 14px; margin: 10px 0 14px;
+            background: rgba(128,128,128,.08); border-radius: 4px; overflow-x: auto; white-space: nowrap; }
+  .wp .eq div { margin: 3px 0; }
+  .wp table { border-collapse: collapse; width: 100%; margin: 12px 0 18px; font-size: 13.5px; }
+  .wp th, .wp td { border: 1px solid rgba(128,128,128,.35); padding: 6px 9px; text-align: left; vertical-align: top; }
+  .wp th { background: rgba(128,128,128,.14); font-weight: 600; }
+  .wp td.n, .wp th.n { text-align: right; white-space: nowrap; }
+  .wp code { font-family: Consolas, Menlo, monospace; font-size: 13px; background: rgba(128,128,128,.12); padding: 1px 4px; border-radius: 3px; }
+  .wp nav ol { columns: 2; column-gap: 32px; font-size: 14px; }
+  .wp nav a, .wp a { color: #2f6fb3; text-decoration: none; }
+  .wp a:hover { text-decoration: underline; }
+  .wp .ref li { font-size: 13.5px; margin-bottom: 7px; }
+  .wp .cite { font-size: 12px; vertical-align: baseline; }
+  .wp .note { font-size: 13px; opacity: .8; }
+  @media (max-width: 640px) { .wp nav ol { columns: 1; } }
+  .wp th, .wp td { white-space: normal; font-variant-numeric: tabular-nums; }
+  .wp th { text-transform: none; letter-spacing: 0; font-size: inherit; color: inherit; }
+  .wp td.n, .wp th.n { white-space: nowrap; }
+  .wp .res { border: 1px solid #BFDCCB; border-left: 4px solid #1F7A4D; border-radius: 4px; background: #F3F9F5;
+             padding: 10px 14px; margin: 14px 0 20px; }
+  .wp .res-h { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #1F7A4D; margin-bottom: 6px; }
+  .wp .res table { margin: 6px 0 8px; font-size: 13px; background: #fff; }
+  .wp .res p { margin: 4px 0 8px; font-size: 13.5px; }
+  .wp .ok { color: #1F7A4D; font-weight: 600; } .wp .bad { color: #B23434; font-weight: 600; } .wp .warn { color: #A84F15; font-weight: 600; }
+  .wp .runline { border: 1px solid #C9D8EC; background: #EEF4FB; border-radius: 4px; padding: 8px 12px; font-size: 13px; margin: 0 0 18px; }
+</style>
+<script src="data.js"></script>
+<script src="common.js"></script>
+<script src="whitepaper.js"></script>
+</head>
+<body>
+<div id="top"></div>
+<script>if (window.DATA) header('whitepaper.html');</script>
+<div class="wp" id="ear-whitepaper" data-calibration-src="calibration_report.json">
+
+<h1>Interest Rate Path Generator for Earnings at Risk</h1>
+<div class="meta">Methodology, decisions, parameters, assumptions and validation &middot; Model version 1.2.0 (calibration targets are deviations from the forward baseline and the factors have momentum: sections 4.1 and 6; mortgage rate: 6.3; official run 5,000 paths: section 7) &middot;
+Implementation: <code>ratemodel/</code> package (model.py, data.py, forwards.py, baseline.py, store.py), run by <code>run_rates.py</code>; income-dependent tests in <code>mbs_lite/validation.py</code></div>
+<div class="runline" id="res-meta" hidden></div>
+
+<nav>
+<ol>
+  <li><a href="#s1">Purpose and scope</a></li>
+  <li><a href="#s2">Summary</a></li>
+  <li><a href="#s3">Theoretical framework</a></li>
+  <li><a href="#s4">Model specification</a></li>
+  <li><a href="#s5">Data</a></li>
+  <li><a href="#s6">Calibration</a></li>
+  <li><a href="#s7">Simulation</a></li>
+  <li><a href="#s8">Earnings-at-Risk measurement</a></li>
+  <li><a href="#s9">Decision register</a></li>
+  <li><a href="#s10">Parameters</a></li>
+  <li><a href="#s11">Validation and monitoring</a></li>
+  <li><a href="#s12">Assumptions and limitations</a></li>
+  <li><a href="#s13">Governance and user controls</a></li>
+  <li><a href="#s14">References</a></li>
+</ol>
+</nav>
+
+<!-- ===================================================================== -->
+<h2 id="s1">1. Purpose and scope</h2>
+<p>The model generates Monte Carlo paths of interest rates that drive a forecast of interest income on a portfolio of
+Fannie Mae fixed-rate MBS. The paths feed two things: the prepayment model, through the 30-year mortgage rate, and the
+reinvestment of returned principal, through 1-month SOFR. The output is a distribution of interest income over
+horizons of one to five years, from which Earnings at Risk (EaR) is read.</p>
+<table>
+  <tr><th style="width:26%">Item</th><th>Definition</th></tr>
+  <tr><td>Intended use</td><td>EaR on MBS interest income: the 5th percentile of income (95% confidence) and its dollar and
+      percentage shortfall against the baseline forecast, for years 1 to 5, cumulative and annual.</td></tr>
+  <tr><td>Rates produced</td><td>1-month SOFR, 10-year Treasury, 30-year fixed mortgage rate; optionally 1-, 2-, 5- and
+      30-year Treasury yields.</td></tr>
+  <tr><td>Balance sheet</td><td>Static: existing securities run off, returned principal is reinvested at 1-month SOFR,
+      there are no new purchases and no funding side.</td></tr>
+  <tr><td>Users</td><td>The CFO and the finance team of the capital markets group.</td></tr>
+  <tr><td>Out of scope</td><td>Valuation, option-adjusted spread, economic value of equity, hedging, and any use that
+      requires arbitrage-free pricing (see <a href="#s3">section 3</a>). The prepayment model is a separate model with its
+      own documentation; the engine shipped in the code is a placeholder.</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="s2">2. Summary</h2>
+<div class="box">
+<p><strong>The model is a real-world, baseline-centered, two-factor Gaussian model calibrated to public history.</strong></p>
+<ul>
+  <li>Each simulated rate equals a baseline path plus a zero-mean random deviation. The baseline is an input: a forward
+      curve, a house forecast or a flat curve all run through the same generator.</li>
+  <li>Two correlated mean-reverting factors, the deviation of the short rate and of the 10-year rate, drive the curve.
+      Each has momentum: a move tends to continue for a few months before mean reversion takes over. A third
+      independent factor drives the primary/secondary mortgage spread.</li>
+  <li>Parameters are estimated so that the fan is as wide at each horizon (3 to 60 months) as rates have historically
+      ended up from the forward curve over that horizon: the same quantity the fan represents when the baseline is the
+      forward curve.</li>
+  <li>The official run uses 5,000 monthly paths over 60 months with antithetic sampling and moment matching.</li>
+  <li>One calibration is official. Two alternatives are reported beside it as a model-risk range. Users do not set
+      calibration parameters.</li>
+</ul>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="s3">3. Theoretical framework</h2>
+
+<h3>3.1 Two probability measures</h3>
+<p>Interest rate simulation serves two different purposes, and each requires its own probability measure
+<span class="cite">[5, 13]</span>.</p>
+<ul>
+  <li><strong>Risk-neutral measure (pricing).</strong> Absence of arbitrage implies that prices are expected discounted
+      cash flows under a measure in which every asset earns the short rate. The drift of rates under this measure is
+      determined by today's curve and the volatility structure <span class="cite">[4]</span>. It is not a forecast. Models
+      in this class include Vasicek <span class="cite">[1]</span>, Hull-White <span class="cite">[2, 3]</span> and the
+      market models, and they are calibrated to option prices.</li>
+  <li><strong>Real-world measure (forecasting and risk).</strong> Paths represent what rates may actually do. Dispersion
+      is estimated from history, and the central path reflects a view of expected rates
+      <span class="cite">[7, 8]</span>.</li>
+</ul>
+<p>The two measures share the same volatility and differ in drift by the market price of risk. EaR is a statement
+about the probability of an earnings outcome, so it is a real-world quantity. This model is therefore specified and
+calibrated under the real-world measure.</p>
+
+<h3>3.2 Centering on the baseline</h3>
+<p>The model does not forecast the level of rates. It takes the baseline as given and simulates deviations whose
+expected value is zero at every horizon. This has three consequences.</p>
+<ul>
+  <li>The EaR shortfall is measured against the same baseline that the income forecast is built on, so the two reconcile.</li>
+  <li>Changing the baseline does not change the model, its calibration or its validation.</li>
+  <li>When the baseline is the forward curve, the model treats forwards as expected future rates. Forward rates equal
+      expected rates plus a term premium, and the premium is time-varying and not directly observable
+      <span class="cite">[9, 10]</span>. Using forwards is a transparent, market-consistent convention, not a claim
+      that forwards are unbiased forecasts. This is recorded as an assumption in <a href="#s12">section 12</a>.</li>
+</ul>
+
+<h3>3.3 Why two Gaussian factors</h3>
+<p>Empirically, two to three factors explain almost all variation in the yield curve; the first two are interpreted
+as level and slope <span class="cite">[6]</span>. The income being modeled depends on two separate points on the curve:
+the long end, which sets the mortgage rate and therefore prepayments, and the short end, which sets the reinvestment
+rate. A one-factor model would force these to move in lockstep and would misstate the scenarios in which they
+diverge. Two factors is the minimum that represents this, and a third curve factor (curvature) has no exposure to act
+on in this portfolio.</p>
+<p>The factors are taken to be observable rates, the short rate and the 10-year yield, in the spirit of yield-factor
+models <span class="cite">[11]</span>. Each follows a mean-reverting Gaussian process, the discrete-time form of the
+Vasicek process <span class="cite">[1]</span> extended with persistent shocks (section 4.1), and the pair has the same structure as the two-factor Gaussian (G2++ or
+two-factor Hull-White) model <span class="cite">[3, 5]</span>. If a valuation use is added later, the structure can be
+retained and recalibrated to option prices under the risk-neutral measure.</p>
+
+<!-- ===================================================================== -->
+<h2 id="s4">4. Model specification</h2>
+<p>Time is measured in months, t = 1, &hellip;, 60. All rates are decimals.</p>
+
+<h3>4.1 Factor dynamics</h3>
+<div class="eq">
+  <div>x<sub>S</sub>(t) = &phi;<sub>S</sub> x<sub>S</sub>(t&minus;1) + u<sub>S</sub>(t), &nbsp; u<sub>S</sub>(t) = m<sub>S</sub> u<sub>S</sub>(t&minus;1) + &sigma;<sub>S</sub> &epsilon;<sub>S</sub>(t) &nbsp;&nbsp;&nbsp; short-rate deviation</div>
+  <div>x<sub>L</sub>(t) = &phi;<sub>L</sub> x<sub>L</sub>(t&minus;1) + u<sub>L</sub>(t), &nbsp; u<sub>L</sub>(t) = m<sub>L</sub> u<sub>L</sub>(t&minus;1) + &sigma;<sub>L</sub> &epsilon;<sub>L</sub>(t) &nbsp;&nbsp;&nbsp; 10-year deviation</div>
+  <div>s(t) &nbsp;= &phi;<sub>M</sub> s(t&minus;1) &nbsp;+ &sigma;<sub>M</sub> &epsilon;<sub>M</sub>(t) &nbsp;&nbsp;&nbsp; mortgage spread deviation</div>
+  <div>x(0) = u(0) = s(0) = 0, &nbsp; corr(&epsilon;<sub>S</sub>, &epsilon;<sub>L</sub>) = &rho;, &nbsp; &epsilon;<sub>M</sub> independent, &nbsp; &epsilon; ~ N(0,1)</div>
+</div>
+<p>&phi; is mean reversion, with a half-life of ln(0.5) / ln(&phi;) months. m is <strong>momentum</strong>: the shock
+itself persists, so a move tends to continue for a few months before reversion takes over, as the policy rate does in
+easing and tightening cycles <span class="cite">[25, 26]</span>. With m = 0 the factor is a first-order autoregression
+(model versions 1.0 and 1.1). With m &ne; 0 it is a second-order autoregression with real roots &phi; and m
+<span class="cite">[27]</span>, which is still Gaussian and mean-reverting. Starting from zero, the standard deviation of
+a factor h months ahead is</p>
+<div class="eq">sd[x(h)] = &sigma; &radic;( &Sigma;<sub>j=0..h&minus;1</sub> &psi;<sub>j</sub><sup>2</sup> ), &nbsp;&nbsp; &psi;<sub>0</sub> = 1, &nbsp; &psi;<sub>1</sub> = &phi; + m, &nbsp; &psi;<sub>j</sub> = (&phi; + m) &psi;<sub>j&minus;1</sub> &minus; &phi; m &psi;<sub>j&minus;2</sub></div>
+<p>With m = 0 this reduces to &sigma; &radic;( (1 &minus; &phi;<sup>2h</sup>) / (1 &minus; &phi;<sup>2</sup>) ). &sigma; sets how
+fast the fan opens, momentum how much faster it widens over the first one to two years than a square-root-of-time
+rule, and mean reversion how much wider it still gets between years 2 and 5. A first-order process has only the first
+and the last of these. It cannot produce a fan that widens fast through year 2 and then flattens, which is the shape
+of short-rate history (section 6.1).</p>
+
+<h3>4.2 Rates</h3>
+<div class="eq">
+  <div>r<sub>SOFR</sub>(t) = max( b<sub>SOFR</sub>(t) + x<sub>S</sub>(t), floor )</div>
+  <div>r<sub>10y</sub>(t) &nbsp;= max( b<sub>10y</sub>(t) + x<sub>L</sub>(t), floor )</div>
+  <div>r<sub>mort</sub>(t) = max( b<sub>mort</sub>(t) + &beta; x<sub>L</sub>(t) + s(t), floor )</div>
+  <div>r<sub>k</sub>(t) &nbsp;&nbsp;= max( b<sub>k</sub>(t) + a<sub>k,S</sub> x<sub>S</sub>(t) + a<sub>k,L</sub> x<sub>L</sub>(t), floor ) &nbsp;&nbsp; other tenors k</div>
+</div>
+<p>b(t) is the baseline path for each rate. &beta; is the sensitivity of the mortgage rate to the 10-year yield, and
+the loadings a<sub>k</sub> place other tenors between the two factors. Other tenors are provided for display and for
+prepayment models that use them; they carry no independent randomness.</p>
+
+<h3>4.3 The mortgage rate</h3>
+<p>The primary mortgage rate tracks the 10-year yield because the expected life of a 30-year mortgage is far
+shorter than its term <span class="cite">[17]</span>. The spread between the two is not constant. It moves with
+originator capacity, guarantee fees and volatility, and it is persistent <span class="cite">[16]</span>. The model
+represents it as a mean-reverting deviation around the baseline spread. The spread factor matters because the
+mortgage rate, not the Treasury yield, sets the refinancing incentive.</p>
+
+<!-- ===================================================================== -->
+<h2 id="s5">5. Data</h2>
+<p>All inputs are public and are downloaded from FRED <span class="cite">[23]</span> by
+<code>load_history()</code>.</p>
+<table>
+  <tr><th>Model input</th><th>Series (FRED identifier)</th><th>Native frequency</th><th>Monthly sampling</th></tr>
+  <tr><td>Short rate, 2018-04 onward</td><td>Secured Overnight Financing Rate (SOFR)</td><td>Daily</td><td>Average</td></tr>
+  <tr><td>Short rate, before 2018-04</td><td>Effective federal funds rate (DFF)</td><td>Daily</td><td>Average</td></tr>
+  <tr><td>10-year rate</td><td>10-year Treasury constant maturity (DGS10)</td><td>Daily</td><td>Last observation</td></tr>
+  <tr><td>Mortgage rate</td><td>Freddie Mac survey 30-year fixed rate (MORTGAGE30US)</td><td>Weekly</td><td>Last observation</td></tr>
+  <tr><td>Other tenors</td><td>DGS1, DGS2, DGS5, DGS30</td><td>Daily</td><td>Last observation</td></tr>
+  <tr><td>Historical forward curves (calibration targets)</td><td>Treasury curve DGS1MO, DGS3MO, DGS6MO, DGS1 to DGS30</td><td>Daily</td><td>Last observation; bootstrapped each month</td></tr>
+</table>
+<h3>Data decisions</h3>
+<ul>
+  <li><strong>Short-rate proxy.</strong> SOFR begins in April 2018, which is too short to calibrate a five-year horizon.
+      The effective federal funds rate is spliced in before that date. Both are overnight rates anchored by the same
+      policy rate, so their changes over horizons of a quarter or longer are nearly identical.</li>
+  <li><strong>Overnight versus 1-month SOFR.</strong> The reinvestment rate is 1-month SOFR, which is the market's
+      expectation of the overnight rate over the coming month. Its <em>level</em> comes from the baseline. Its
+      <em>deviation</em> is taken to equal the deviation of the overnight rate.</li>
+  <li><strong>Sampling.</strong> Term yields and the mortgage rate use the last observation of the month, because
+      changes in monthly averages have lower variance and spurious autocorrelation relative to point-in-time changes
+      <span class="cite">[15]</span>. The overnight rate uses the monthly average to remove month-end and
+      quarter-end funding noise; the policy rate is a step function, so averaging loses little.</li>
+  <li><strong>Historical forwards.</strong> The calibration targets need, for every month of history, the forward
+      baseline that a run on that date would have used. <code>forwards.py</code> bootstraps each month-end Treasury curve
+      exactly as the run's baseline is built (<code>curve.py</code>) and records the implied forward 1-month rate and
+      10-year par yield 3 to 60 months ahead. Bill yields begin in 1982 (3-month) and 2001 (1-month); before that the
+      short end of the curve is extrapolated from the 1-year point, which affects only the 1976 calibration. A month needs
+      at least the 1-, 5- and 10-year yields.</li>
+  <li><strong>Treasury, not swap, yields.</strong> Constant-maturity Treasury yields have a long, free, consistent
+      history. Only their changes are used, so the level of the swap spread does not enter.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="s6">6. Calibration</h2>
+<p>Calibration is performed by <code>calibrate()</code> on a named historical window (<a href="#s13">section 13</a>).</p>
+
+<h3>6.1 Factor volatility, momentum and mean reversion: horizon matching on forward deviations</h3>
+<p>The calibration target is the width of the simulated fan. The fan is a deviation from the baseline, and the
+official baseline is the forward curve, so the historical analogue of a simulated deviation is the
+<strong>deviation of the realized rate from the forward</strong>:</p>
+<div class="eq">e(t, h) = r(t + h) &minus; r(t) &minus; [ f(t, h) &minus; f(t, 0) ]</div>
+<p>where f(t, h) is the rate implied for month t + h by month t's Treasury curve, built exactly as the run's forward
+baseline is built (section 5): the forward 1-month rate for the short rate and the forward 10-year par yield for the
+10-year and the mortgage rate. For each factor, &phi;, m and &sigma; are chosen so that the standard deviation of the
+simulated deviation h months ahead (<a href="#s4">section 4.1</a>) matches the sample standard deviation of overlapping
+e(t, h), for h = 3, 12, 24, 36 and 60 months. The fit minimizes the weighted squared difference of the logarithms; the
+weight on each horizon is T/h, the approximate number of independent observations. &phi; is bounded to [0.80, 0.9995],
+m to [&minus;0.5, 0.95], and a flag is raised if an estimate sits on a bound. In plain terms: the fan is as wide at each
+horizon as rates have historically ended up from the forward curve.</p>
+<p><strong>Why forward deviations.</strong> Versions 1.0 and 1.1 fitted the fan to raw h-month changes, because they
+treated public data as containing no forward history. Raw changes are the wrong target in both directions: they
+include moves the curve anticipated (a priced-in easing cycle is in the baseline, not the risk), and the forward also
+moves in ways a raw change does not show. On the official window the short rate's deviations from the forward are 5%
+to 10% narrower than its raw changes at every horizon (41 against 46 bp at 3 months, 135 against 149 at 12, 246 against
+275 at 36). For the 10-year yield and the mortgage rate the two are within 4% of each other, because 10-year forwards
+are close to today's yield. The larger consequence of the change is the shape of the short-rate target, below.</p>
+<p><strong>Why momentum.</strong> The short rate's deviations from the forward widen quickly through year 2 and then
+level off (roughly 41, 135, 224, 246 and 240 bp at 3, 12, 24, 36 and 60 months on the official window). A first-order
+process cannot produce that shape: fitted to these targets its &phi; goes to the upper bound and it is still 19% too
+wide at 3 months and 28% to 39% too narrow at 12 to 36 months. Momentum is the one parameter that adds the missing shape. Policy rates move in runs because the
+central bank adjusts gradually <span class="cite">[25, 26]</span>; the momentum term is that gradualism. It is
+identified: on histories simulated from a first-order process of this length, the refitted momentum exceeds 0.38 in
+only 5% of cases, against an estimate near 0.78 for the short rate (V7 reports the range).</p>
+<p><strong>Why horizon matching.</strong> EaR depends on how far rates can move over one to five years. A model fitted
+only to month-to-month dynamics can match monthly volatility and still misstate multi-year dispersion, because monthly
+changes are autocorrelated (momentum) and because the least-squares estimate of mean reversion is biased toward
+reversion that is too fast in samples of this length <span class="cite">[12, 22]</span>.</p>
+<p><strong>What the target leaves out.</strong> The standard deviation removes the mean deviation. Forwards have been
+biased forecasts: since 1990 the realized short rate ended on average 65 bp below its 12-month forward and more than
+2 percentage points below its 5-year forward (the term premium, and three decades of falling rates)
+<span class="cite">[9, 10, 28]</span>. That bias is a property of the baseline, not of the fan, and is assumption A1.
+Using the root-mean-square deviation instead would add the historical bias to the width, which would double count it
+whenever the baseline is not the forward.</p>
+<p><strong>Challengers.</strong> The calibration diagnostics report a first-order process (m = 0) fitted to the same
+targets, the v1.1.0 calibration (first-order, fitted to raw changes) measured against the forward-deviation targets,
+and ordinary least squares with the Kendall bias correction <span class="cite">[12]</span>. A simulation study of the
+v1.1.0 first-order estimator on histories generated from known parameters (300 replications, 442 months, three
+parameter sets; <code>estimator_study.py</code>) gave the following for the 60-month fan width.</p>
+<table>
+  <tr><th>Estimator (first-order process)</th><th>Compared with</th><th class="n">Mean ratio (range across parameter sets)</th><th class="n">Standard deviation of ratio</th></tr>
+  <tr><td>Horizon matching on raw changes (v1.1.0)</td><td>True dispersion of 60-month changes (its target)</td><td class="n">0.94 to 0.99</td><td class="n">0.19 to 0.21</td></tr>
+  <tr><td>Horizon matching on raw changes (v1.1.0)</td><td>True conditional dispersion</td><td class="n">1.07 to 1.30</td><td class="n">0.21 to 0.27</td></tr>
+  <tr><td>Least squares, bias-corrected (challenger)</td><td>True conditional dispersion</td><td class="n">0.98 to 1.03</td><td class="n">0.21 to 0.23</td></tr>
+  <tr><td>Least squares, uncorrected</td><td>True conditional dispersion</td><td class="n">0.82 to 0.91</td><td class="n">0.17</td></tr>
+</table>
+<p>On raw changes the v1.1.0 estimator was 7% to 30% wider than the true conditional dispersion, because part of a raw
+change is predictable. Fitted to deviations from an unbiased forecast, which is what the forward-deviation target is
+when forwards are unbiased, the production estimator recovers the generator's fan width: the V7 bootstrap, which
+measures each simulated history's deviations from its own conditional expectation, gives a mean ratio of about 0.98 at
+12 months and 0.91 at 60 months. The shortfall at 60 months is the small-sample bias of long-horizon standard deviations
+from overlapping data. Every estimator carries sampling error of roughly 20% (one standard deviation) on five-year
+dispersion and about 10% at one year. That uncertainty cannot be reduced by running more paths, and it is the main
+reason alternative calibrations are reported (<a href="#s13">section 13</a>).</p>
+
+<div class="res" id="res-s61" hidden><div class="res-h">Results of this run · fan-width fit and challengers, official calibration</div><div class="res-b"></div></div>
+<h3>6.2 Short/long correlation</h3>
+<p>&rho; is solved so that the model's correlation of the short-rate and 10-year deviations 12 months ahead equals the
+historical correlation of their 12-month deviations from the forward. With momentum the two factors accumulate shocks
+with different weights, so the deviation correlation is smaller than the shock correlation:</p>
+<div class="eq">corr[x<sub>S</sub>(12), x<sub>L</sub>(12)] = &rho; &Sigma; &psi;<sub>S,j</sub> &psi;<sub>L,j</sub> / &radic;( &Sigma; &psi;<sub>S,j</sub><sup>2</sup> &Sigma; &psi;<sub>L,j</sub><sup>2</sup> ), &nbsp; j = 0..11</div>
+<p>and &rho; is the historical correlation divided by the shape factor, capped at &plusmn;0.99. Historically the two are
+more highly correlated over a year than over a month, because the long end anticipates policy moves that the short
+rate delivers later. A model with a single correlation parameter cannot match every horizon, so the correlation is
+matched at the first reporting horizon; other horizons are recorded in the diagnostics. In the simulation study, the
+12-month estimate was unbiased but about three times noisier than the monthly estimate (standard deviation 0.095
+against 0.032); this is accepted as the cost of matching the relevant horizon.</p>
+
+<div class="res" id="res-s62" hidden><div class="res-h">Results of this run · correlation</div><div class="res-b"></div></div>
+<h3>6.3 Mortgage rate</h3>
+<p>The mortgage rate is calibrated the same way as the two factors: so that its fan is as wide at each horizon as
+the mortgage rate has historically ended up from its forward over that horizon. The forward mortgage rate is the
+forward 10-year yield plus today's spread, as in the run's baseline.</p>
+<ul>
+  <li>&beta; is the regression coefficient of 12-month mortgage-rate deviations from the forward on 12-month 10-year
+      deviations from the forward, the horizon at which the short/long correlation is matched (section 6.2). The
+      pass-through of Treasury moves into the survey rate rises with the horizon: on the official window it is about
+      0.8 at 3 months, 0.9 at 12 months and slightly above 1 at 36 and 60 months (results below). Short horizons understate it because the survey rate lags the Treasury market and is
+      published on a different day from the Treasury month-end.</li>
+  <li>With &beta; and the 10-year factor fixed, &phi;<sub>M</sub> and &sigma;<sub>M</sub> are chosen so that the
+      standard deviation of the simulated mortgage-rate deviation h months ahead,
+      <div class="eq">sd[d<sub>mort</sub>(h)] = &radic;( &beta;<sup>2</sup> sd[x<sub>L</sub>(h)]<sup>2</sup> + sd[s(h)]<sup>2</sup> )</div>
+      matches the sample standard deviation of overlapping h-month mortgage-rate deviations from the forward, for the
+      same horizons and weights as section 6.1. The spread therefore carries whatever mortgage-rate dispersion the 10-year factor
+      does not.</li>
+  <li>The spread shock is independent of the rate shocks. See the limitation in <a href="#s12">section 12</a>.</li>
+</ul>
+<p><strong>History.</strong> Version 1.0.0 took &beta; from 3-month changes and fitted the spread by
+autoregression. The 10-year fan matched history, but &beta; = 0.77 passed through too little of a multi-year move and
+the fast-reverting spread could not make it up: the mortgage fan was 20% to 24% narrower than history at three to five
+years. Because the mortgage rate drives refinancing, that understated the downside of income at the longer horizons.
+Version 1.1.0 fixed this on raw changes; version 1.2.0 applies the same method to forward deviations. The v1.1.0
+&beta; is kept as a challenger in the calibration diagnostics.</p>
+
+<div class="res" id="res-s63" hidden><div class="res-h">Results of this run · mortgage rate</div><div class="res-b"></div></div>
+<h3>6.4 Other tenors</h3>
+<p>Loadings for the 1-, 2-, 5- and 30-year yields are regression coefficients of their 3-month deviations from their
+own forwards on the 3-month deviations of the two factors.</p>
+
+<!-- ===================================================================== -->
+<div class="res" id="res-s64" hidden><div class="res-h">Results of this run · tenor loadings</div><div class="res-b"></div></div>
+<h2 id="s7">7. Simulation</h2>
+<p>Implemented in <code>simulate_paths()</code> with settings held in <code>SimConfig</code>.</p>
+<ul>
+  <li><strong>Time step and horizon.</strong> Monthly steps for 60 months, matching the cash-flow frequency of MBS and
+      the input frequency of prepayment models. The autoregressive recursion is exact at a monthly step; there is no
+      discretization error.</li>
+  <li><strong>Initial condition.</strong> Deviations start at zero: today's rates are known and equal the baseline's
+      starting point.</li>
+  <li><strong>Antithetic sampling.</strong> Half the paths are drawn and the other half are their mirror images. The
+      sample mean of every deviation is then exactly zero, and estimates of statistics that are close to linear in
+      rates become more precise <span class="cite">[13]</span>.</li>
+  <li><strong>Moment matching.</strong> At each month, shocks are rescaled across paths to unit sample variance, so the
+      simulated dispersion matches the calibrated dispersion and does not vary with the random seed
+      <span class="cite">[13]</span>.</li>
+  <li><strong>Seed.</strong> Fixed and recorded, so every reported figure can be reproduced exactly.</li>
+  <li><strong>Floor.</strong> Every simulated rate is floored at 0%. A Gaussian model permits negative rates; U.S. policy
+      and Treasury rates have not been negative, and the floor follows the view that the nominal rate behaves like an
+      option with a zero strike <span class="cite">[19]</span>. The floor truncates the falling-rate tail and raises the
+      mean of floored paths above the baseline. Both effects are measured in validation tests V1 and V4.</li>
+  <li><strong>Alternative sampler.</strong> Scrambled Sobol sequences are available as an option and are used as an
+      independent check on the pseudo-random results.</li>
+</ul>
+
+<h3>Number of paths</h3>
+<p>The estimate of a percentile has sampling error. If n independent paths are used to estimate the quantile at
+probability p, the probability level actually captured has standard error
+&radic;( p(1 &minus; p) / n ) <span class="cite">[13]</span>. For p = 5%:</p>
+<table>
+  <tr><th class="n">Paths</th><th class="n">Standard error</th><th class="n">Range within two standard errors</th><th class="n">Paths beyond the 5th percentile</th><th class="n">Paths beyond the 1st percentile</th></tr>
+  <tr><td class="n">300</td><td class="n">1.26 points</td><td class="n">2.5th to 7.5th percentile</td><td class="n">15</td><td class="n">3</td></tr>
+  <tr><td class="n">1,000</td><td class="n">0.69 points</td><td class="n">3.6th to 6.4th percentile</td><td class="n">50</td><td class="n">10</td></tr>
+  <tr><td class="n">5,000</td><td class="n">0.31 points</td><td class="n">4.4th to 5.6th percentile</td><td class="n">250</td><td class="n">50</td></tr>
+</table>
+<p>The official run uses 5,000 paths, which resolves both the 5th and the 1st percentile, so the 95% and 99% measures
+and expected shortfall come from one path set. A 20,000-path run is produced at each calibration to demonstrate
+convergence (test V5). 300 paths is acceptable for means and standard deviations and is not used for reported
+percentiles. Each reported percentile carries a 95% bootstrap confidence interval
+<span class="cite">[14]</span> in which antithetic pairs are resampled together.</p>
+<p><strong>Why 5,000 (revised from 1,000).</strong> With 1,000 paths the sample correlation between shocks that are
+independent by design is typically around ±0.1. Moment matching fixes each shock's variance but not those
+correlations. The mortgage rate combines the 10-year factor and the spread, so its simulated dispersion missed the
+calibrated width by more than 5% at some horizon for about 40% of random seeds, and the 1,000-path five-year 5th
+percentile fell outside the 5,000-path interval. At 5,000 paths both errors are within about 1%.</p>
+
+<!-- ===================================================================== -->
+<div class="res" id="res-s7" hidden><div class="res-h">Results of this run · simulation settings and precision</div><div class="res-b"></div></div>
+<h2 id="s8">8. Earnings-at-Risk measurement</h2>
+<p>Implemented in <code>ear_summary()</code>. Income on each path is supplied by the income engine, which applies the
+prepayment model to the mortgage rate path and reinvests returned principal at the 1-month SOFR path.</p>
+<div class="eq">
+  <div>Income at confidence c &nbsp;= (1 &minus; c) quantile of simulated income &nbsp;&nbsp; (5th percentile for c = 95%)</div>
+  <div>Shortfall ($) &nbsp;= baseline income &minus; income at confidence</div>
+  <div>Shortfall (%) &nbsp;= shortfall ($) / baseline income</div>
+</div>
+<ul>
+  <li><strong>Baseline income</strong> is income on the baseline rate path, run through the same engine.</li>
+  <li><strong>Horizons.</strong> The statistics are computed for years 1 to 5, both cumulative (months 1 to 12k) and
+      annual (months 12(k&minus;1)+1 to 12k). The percentile is taken separately for each horizon, because the paths that
+      are worst in year 1 are not the paths that are worst over five years.</li>
+  <li><strong>The percentile is taken on income, not on rates.</strong> No assumption is made about which direction of
+      rates is adverse. For a security whose coupon is above SOFR, a prepayment replaces a higher-yielding asset with
+      a lower-yielding one, so falling rates reduce income twice: more principal is returned and it earns less. For a
+      security whose coupon is below SOFR, a prepayment raises income, and the adverse outcomes are driven mainly by
+      the SOFR path. A portfolio contains both, and the sign of the exposure can change as rates move.</li>
+  <li><strong>Mean versus baseline.</strong> Mean simulated income differs from baseline income because income is a
+      nonlinear function of rates. The difference is reported (<code>mean_minus_baseline_pct</code>) and is a measure of
+      the convexity of income, not an error.</li>
+  <li><strong>Income definition.</strong> The reference engine measures coupon interest plus reinvestment interest. If
+      reported income includes amortization of purchase premium and discount, the production engine must include it;
+      the rate paths and the EaR calculation are unaffected.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<div class="res" id="res-s8" hidden><div class="res-h">Results of this run · Earnings at Risk</div><div class="res-b"></div></div>
+<h2 id="s9">9. Decision register</h2>
+<table>
+  <tr><th style="width:4%">#</th><th style="width:17%">Decision</th><th style="width:21%">Choice</th><th style="width:24%">Alternatives considered</th><th>Justification</th></tr>
+  <tr><td>D1</td><td>Probability measure</td><td>Real-world</td><td>Risk-neutral paths calibrated to swaptions</td>
+      <td>EaR is a probability statement about earnings. Risk-neutral paths are built to price, and their distribution
+      embeds risk premia. No valuation use is in scope.</td></tr>
+  <tr><td>D2</td><td>Central path</td><td>User-supplied baseline plus zero-mean deviations</td><td>Model-generated forecast of rate levels</td>
+      <td>Rate-level forecasts from statistical models are weak; the baseline is a business input. Separation lets the
+      baseline change without revalidation and makes the shortfall reconcile to the forecast.</td></tr>
+  <tr><td>D3</td><td>Number of factors</td><td>Two curve factors plus one spread factor</td><td>One factor; three principal components; full market model</td>
+      <td>The income has two distinct exposures (long end and short end). One factor cannot separate them; more than two
+      adds parameters without a corresponding exposure <span class="cite">[6]</span>.</td></tr>
+  <tr><td>D4</td><td>Factor definition</td><td>Observable rates: short rate and 10-year yield</td><td>Principal components; Nelson-Siegel factors <span class="cite">[7]</span></td>
+      <td>The factors are the rates the income depends on, so calibration targets and validation tests are stated
+      directly in terms users recognize.</td></tr>
+  <tr><td>D5</td><td>Distribution</td><td>Gaussian, additive shocks, floor at 0%</td><td>Lognormal; shifted lognormal; square-root process</td>
+      <td>Basis-point volatility is more stable across rate levels than proportional volatility at the rate levels of the
+      calibration window; lognormal models overstate dispersion at high rates and understate it at low rates. Evidence
+      that volatility rises with the level of rates <span class="cite">[18]</span> is noted as a limitation.</td></tr>
+  <tr><td>D6</td><td>Dynamics</td><td>Mean reversion with momentum (persistent shocks) per factor, correlated shocks (v1.2.0)</td><td>First-order mean reversion (v1.0, v1.1); full vector autoregression; random walk; regime switching</td>
+      <td>A first-order process cannot match the short rate's fan at every horizon (19% too wide at 3 months, 28% to 39%
+      too narrow at 1 to 3 years, &phi; at its bound); one momentum parameter per factor fixes the shape and is identified (section 6.1). A
+      random walk lets dispersion grow without limit over five years. A full vector autoregression adds poorly
+      identified cross terms. Regime switching is not supportable with public data alone at this sample size.</td></tr>
+  <tr><td>D7</td><td>Estimator and target</td><td>Horizon matching at 3 to 60 months on deviations from the historical forward curve (v1.2.0)</td><td>Raw h-month changes (v1.0, v1.1); least squares with and without bias correction; maximum likelihood</td>
+      <td>Sets the fan width directly to the historical dispersion of the quantity the fan represents (deviations from a
+      forward baseline) at the reporting horizons; robust to autocorrelated monthly changes
+      (<a href="#s6">section 6.1</a>).</td></tr>
+  <tr><td>D8</td><td>Correlation horizon</td><td>12-month deviations, &rho; solved for the model's deviation correlation</td><td>Monthly changes; &rho; set to the sample correlation</td>
+      <td>Matches co-movement at the first reporting horizon (<a href="#s6">section 6.2</a>).</td></tr>
+  <tr><td>D9</td><td>Official window</td><td>January 1990 to latest month</td><td>Full history from 1976; trailing 10 years</td>
+      <td>Covers several tightening and easing cycles, the zero-rate periods and the 2022-23 tightening. Excludes
+      1979-82, when the Federal Reserve targeted reserves and rate volatility reflected an operating procedure that no
+      longer exists. The alternatives are reported as sensitivities.</td></tr>
+  <tr><td>D10</td><td>Volatility source</td><td>Historical</td><td>Swaption-implied volatility</td>
+      <td>Consistent with D1. Implied volatility embeds a volatility risk premium and requires licensed data. It is the
+      correct input if a valuation use is added.</td></tr>
+  <tr><td>D11</td><td>Mortgage rate</td><td>&beta; (12-month deviations) times the 10-year deviation plus a mean-reverting spread, fitted so the mortgage fan matches historical mortgage-rate deviations from the forward at 3 to 60 months</td><td>Constant spread; &beta; from 3-month changes with an autoregressive spread (v1.0.0); blend of 2- and 10-year yields; current-coupon model</td>
+      <td>A constant spread understates mortgage-rate dispersion, and so did the v1.0.0 calibration (20% to 24% at three
+      to five years). The mortgage rate sets refinancing, so its fan is held to the same standard as the factors
+      (section 6.3). A current-coupon model requires an option model and is disproportionate for an income forecast
+      <span class="cite">[16, 17]</span>.</td></tr>
+  <tr><td>D12</td><td>Path count and sampling</td><td>5,000 paths, antithetic, moment-matched, fixed seed</td><td>300; 1,000 (the original choice); quasi-random</td>
+      <td><a href="#s7">Section 7</a>. 5,000 paths resolves the 1st percentile and keeps sampling error in the
+      mortgage-rate dispersion and the five-year EaR within about 1%; 1,000 paths did not (V2, V5). 20,000 is used to
+      prove convergence.</td></tr>
+  <tr><td>D13</td><td>Risk measure</td><td>5th percentile of income by horizon</td><td>Expected shortfall; percentile of rates mapped to income</td>
+      <td>Matches the reporting requirement and makes no assumption about the adverse rate direction. Expected shortfall
+      is more informative about the tail but needs more paths; it can be added from the same output.</td></tr>
+  <tr><td>D14</td><td>User controls</td><td>One official calibration, two named alternatives, no parameter toggles</td><td>User-selectable window and exclusions</td>
+      <td><a href="#s13">Section 13</a>.</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="s10">10. Parameters</h2>
+<h3>10.1 Fixed by design</h3>
+<table>
+  <tr><th>Parameter</th><th>Value</th><th>Code location</th></tr>
+  <tr><td>Time step; horizon</td><td>1 month; 60 months</td><td><code>SimConfig.n_months</code></td></tr>
+  <tr><td>Paths (official; convergence runs)</td><td>5,000; 1,000 and 20,000</td><td><code>SimConfig.n_paths</code></td></tr>
+  <tr><td>Antithetic sampling; moment matching</td><td>On; on</td><td><code>SimConfig.antithetic</code>, <code>.moment_match</code></td></tr>
+  <tr><td>Random seed</td><td>20261110</td><td><code>SimConfig.seed</code></td></tr>
+  <tr><td>Rate floor</td><td>0.00%</td><td><code>SimConfig.floor</code></td></tr>
+  <tr><td>Confidence level</td><td>95%</td><td><code>ear_summary(confidence=)</code></td></tr>
+  <tr><td>Calibration horizons</td><td>3, 12, 24, 36, 60 months</td><td><code>CALIBRATION_HORIZONS</code></td></tr>
+  <tr><td>Correlation horizon</td><td>12 months</td><td><code>CORR_HORIZON</code></td></tr>
+  <tr><td>Deviation horizon for &beta;</td><td>12 months</td><td><code>CORR_HORIZON</code></td></tr>
+  <tr><td>Deviation horizon for tenor loadings</td><td>3 months</td><td><code>REGRESSION_HORIZON</code></td></tr>
+  <tr><td>Bounds on &phi;; on momentum m</td><td>0.80 to 0.9995; &minus;0.50 to 0.95</td><td><code>PHI_BOUNDS</code>, <code>MOM_BOUNDS</code></td></tr>
+  <tr><td>Calibration target</td><td>Deviations from the forward implied by each month's Treasury curve</td><td><code>forwards.py</code>, <code>deviation_targets()</code></td></tr>
+  <tr><td>Minimum window length</td><td>96 months</td><td><code>calibrate()</code></td></tr>
+  <tr><td>Official window</td><td>1990-01 to latest</td><td><code>CALIBRATION_WINDOWS["base"]</code></td></tr>
+  <tr><td>Alternative windows</td><td>Trailing 120 months; 1976-01 to latest</td><td><code>["recent"]</code>, <code>["high_vol"]</code></td></tr>
+  <tr><td>Bootstrap resamples for confidence interval</td><td>2,000</td><td><code>ear_summary(n_boot=)</code></td></tr>
+</table>
+
+<h3>10.2 Estimated at calibration</h3>
+<p>The ten estimated parameters are &phi;<sub>S</sub>, m<sub>S</sub>, &sigma;<sub>S</sub>, &phi;<sub>L</sub>, m<sub>L</sub>,
+&sigma;<sub>L</sub>, &rho;, &beta;, &phi;<sub>M</sub>, &sigma;<sub>M</sub>, plus two loadings per optional tenor. Their values depend on the
+calibration date and are written to <code>calibration_report.json</code> by <code>write_calibration_report()</code>.</p>
+<div id="wp-calibration">
+  <p class="note">Current values are displayed here when <code>calibration_report.json</code> is served alongside this
+  page. No values are shown because the file was not found.</p>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="s11">11. Validation and monitoring</h2>
+<p>The tests below are produced by <code>validation_report()</code> at every calibration. They cover the three elements
+of validation in supervisory guidance: conceptual soundness, outcomes analysis and ongoing monitoring
+<span class="cite">[20, 21]</span>.</p>
+<table>
+  <tr><th style="width:5%">Test</th><th style="width:22%">What it checks</th><th>Method</th><th style="width:26%">Acceptance criterion</th></tr>
+  <tr><td>V1</td><td>Centering</td><td>Mean simulated deviation against zero at months 12 to 60; separately, the bias in the mean introduced by the floor.</td>
+      <td>Unfloored mean within three Monte Carlo standard errors of zero. Floor bias reported.</td></tr>
+  <tr><td>V2</td><td>Dispersion</td><td>Simulated standard deviation against the analytic formula in section 4.1; fan width against the calibration target (historical standard deviation of h-month deviations from the forward, stored with the calibration), for the short rate, the 10-year yield and the mortgage rate.</td>
+      <td>Simulated within 5% of analytic. Model-to-history ratio reported per horizon; ratios outside 0.85 to 1.15 are explained.</td></tr>
+  <tr><td>V3</td><td>Co-movement and curve shape</td><td>Correlation of the simulated short-rate and 10-year deviations at 12 months against the historical correlation of 12-month forward deviations; frequency of curve inversion in simulation, baseline and history; mortgage-to-10-year correlation at 12 months against history.</td>
+      <td>Correlation within 0.10 of history. Inversion frequency reviewed for plausibility given the baseline. With
+      momentum the short rate's 1-year fan is wider than the 10-year's, so on an upward-sloping baseline the simulated
+      curve inverts more often than it has historically (about 31% of path-months against 18% at the 2026-09
+      calibration): disclosed, not adjusted.</td></tr>
+  <tr><td>V4</td><td>Floor incidence</td><td>Share of path-months at the floor, and share of paths that touch it, by rate.</td>
+      <td>Reported. If more than 5% of paths touch the floor, EaR is rerun with the floor at &minus;0.50% and the difference disclosed.</td></tr>
+  <tr><td>V5</td><td>Convergence</td><td>EaR at 1,000, 5,000 and 20,000 paths with bootstrap interval half-widths.</td>
+      <td>20,000-path result inside the 95% confidence interval of the official 5,000-path result. (Revised from
+      "tested result inside the benchmark interval", which ignores the tested run's own sampling error and fails about a
+      third of the time on converged results.)</td></tr>
+  <tr><td>V6</td><td>Benchmark shocks</td><td>Income under parallel shifts of &plusmn;100 and &plusmn;200 basis points, located as a percentile of the simulated income distribution.</td>
+      <td>Direction and ordering consistent with the simulated distribution. See note below.</td></tr>
+  <tr><td>V7</td><td>Estimation error</td><td>Parametric bootstrap: histories are simulated from the fitted model (with momentum), their deviations measured from their own conditional expectation, refitted with the production estimator, and the spread of implied 12- and 60-month dispersion and of the momentum estimate reported.</td>
+      <td>Reported with the EaR as a statement of calibration uncertainty.</td></tr>
+  <tr><td>V8</td><td>Calibration sensitivity</td><td>EaR under each named calibration (<code>calibration_sensitivity()</code>).</td>
+      <td>Range reported beside the official figure.</td></tr>
+</table>
+<p class="note"><strong>Note on V6.</strong> An instantaneous parallel shock applies in full from the first month.
+Simulated paths start at the baseline and diffuse away from it, so an immediate 100-basis-point shift is a far more
+extreme event over the first year than the same shift reached at month 12. Instantaneous shocks will therefore sit
+deep in the tail at the one-year horizon. This is expected and is a reason to present the two measures as answering
+different questions.</p>
+<div class="res" id="res-s11" hidden><div class="res-h">Results of this run · validation tests V1 to V8</div><div class="res-b"></div></div>
+<h3>Ongoing monitoring</h3>
+<ul>
+  <li><strong>Coverage backtest.</strong> Each month, record the 5th and 95th percentile bands produced 12 months earlier
+      and whether the realized deviation from that baseline fell inside. Over time the exceedance frequency is tested
+      against the nominal 10% <span class="cite">[24]</span>. Overlapping 12-month windows are not independent, so the
+      test is indicative until several years of results exist.</li>
+  <li><strong>Stability.</strong> Track each estimated parameter across calibrations. A change of more than 20% in
+      12- or 60-month dispersion between consecutive calibrations triggers review.</li>
+  <li><strong>Challenger gap.</strong> Track the difference between production and challenger dispersion
+      (<a href="#s6">section 6.1</a>).</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="s12">12. Assumptions and limitations</h2>
+<table>
+  <tr><th style="width:4%">#</th><th style="width:30%">Assumption or limitation</th><th>Effect and mitigation</th></tr>
+  <tr><td>A1</td><td>The baseline is the expected path of rates.</td><td>A forward-curve baseline includes a term premium
+      <span class="cite">[9, 10]</span>: since 1990 the realized short rate ended on average 65 bp below its 12-month
+      forward (section 6.1). The fan width excludes this bias by construction. The shortfall is measured against the baseline and is insensitive to modest
+      errors in its level; the level of income is not. Alternative baselines can be run without changing the model.</td></tr>
+  <tr><td>A2</td><td>Volatility is constant over the horizon.</td><td>Rate volatility clusters. The model reports average
+      dispersion and will understate risk at the start of a volatile regime. Mitigated by the high-volatility
+      calibration (V8).</td></tr>
+  <tr><td>A3</td><td>Volatility does not depend on the level of rates.</td><td>Evidence indicates that it rises with the
+      level <span class="cite">[18]</span>. Material only if the baseline is far from the levels in the calibration
+      window.</td></tr>
+  <tr><td>A4</td><td>Shocks are Gaussian.</td><td>No jumps or fat tails in monthly shocks. Multi-year sums of shocks are
+      close to Gaussian in any case, and the 95% level is less sensitive to tail shape than 99% would be.</td></tr>
+  <tr><td>A5</td><td>One correlation between short and long rates.</td><td>Cannot reproduce the full lead-lag pattern
+      between the long end and the policy rate. Correlation is matched at 12 months; other horizons are disclosed.</td></tr>
+  <tr><td>A6</td><td>Mean reversion is poorly identified.</td><td>Five-year dispersion carries estimation error of roughly
+      20% (V7), and the long-horizon target is biased low by a few percent in samples of this length. This is the
+      largest quantifiable source of model uncertainty and is disclosed with the EaR. The 10-year factor's momentum is
+      not well identified (V7 range); the short rate's is.</td></tr>
+  <tr><td>A6b</td><td>Historical forward deviations represent the risk around today's forward baseline.</td><td>The
+      fan is fitted to how far rates ended up from the forward in the calibration window
+      (<a href="#s6">section 6.1</a>). The historical forwards are bootstrapped from the Treasury curve by the same method
+      as the run's baseline; before 1982 the short end is extrapolated (1976 calibration only). With a flat or house-view
+      baseline the same fan is used, which assumes those baselines miss by as much as forwards did. Version 1.1.0
+      fitted raw changes instead; the challenger in the diagnostics shows the difference.</td></tr>
+  <tr><td>A7</td><td>Rates are floored at zero.</td><td>Truncates the falling-rate tail, which is adverse for
+      premium-coupon holdings. Incidence measured in V4 with a rerun trigger.</td></tr>
+  <tr><td>A8</td><td>The mortgage spread is independent of rates.</td><td>The spread has tended to widen when rates fall
+      quickly and originators are capacity-constrained <span class="cite">[16]</span>, which delays the pass-through to
+      refinancing. Independence therefore tends to overstate prepayment response in sharp rallies, which is
+      conservative for premium-coupon holdings.</td></tr>
+  <tr><td>A9</td><td>The 1-month SOFR deviation equals the overnight-rate deviation.</td><td>Ignores variation in the
+      one-month term spread, which is small relative to the short-rate dispersion over 12 months or more.</td></tr>
+  <tr><td>A10</td><td>Other tenors are exact combinations of the two factors.</td><td>Understates their idiosyncratic
+      variation. Immaterial unless the prepayment model is driven by those tenors.</td></tr>
+  <tr><td>A11</td><td>The model is not arbitrage-free.</td><td>Acceptable for income simulation under the real-world
+      measure. The paths must not be used for discounting or pricing.</td></tr>
+  <tr><td>A12</td><td>History before April 2018 uses the federal funds rate for SOFR.</td><td>Basis between the two is
+      small relative to rate changes over a quarter or more.</td></tr>
+  <tr><td>A13</td><td>Static balance sheet; rates are the only risk factor.</td><td>EaR excludes purchase volume, spread
+      risk on new investments and prepayment model error. Prepayment model risk is governed separately.</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="s13">13. Governance and user controls</h2>
+<h3>13.1 Named calibrations</h3>
+<table>
+  <tr><th>Name</th><th>Window</th><th>Status</th><th>Purpose</th></tr>
+  <tr><td><code>base</code></td><td>January 1990 to latest</td><td>Official</td><td>The only calibration that produces the reported EaR.</td></tr>
+  <tr><td><code>recent</code></td><td>Trailing 120 months</td><td>Sensitivity</td><td>Result if the most recent decade is the guide.</td></tr>
+  <tr><td><code>high_vol</code></td><td>January 1976 to latest</td><td>Sensitivity</td><td>Includes the 1979-82 period; a conservative bound.</td></tr>
+</table>
+<h3>13.2 Why users do not set calibration parameters</h3>
+<ul>
+  <li>Each window or exclusion is a different calibration of the model. Supervisory guidance expects a model to be
+      validated in the configuration in which it is used <span class="cite">[20, 21]</span>; an open toggle creates
+      configurations that have not been.</li>
+  <li>A reported risk measure must be reproducible and comparable from period to period. Changes in EaR should come
+      from the portfolio and the market, not from settings.</li>
+  <li>The choice of window is a modeling judgment that belongs to the model owner and is documented here.</li>
+</ul>
+<p>Sensitivity to calibration is still shown: the three named calibrations appear side by side (V8). Users may change
+inputs and views, which alter the question and not the model: the baseline, the horizon, cumulative or annual
+income, the portfolio segment, deterministic shock overlays and the percentile bands on the fan chart.</p>
+<h3>13.3 Change control</h3>
+<ul>
+  <li><strong>Recalibration.</strong> Annually, and off-cycle if a monitoring trigger in section 11 is breached.</li>
+  <li><strong>Run record.</strong> Every run stores the model version, calibration name, window dates, parameter values,
+      seed, path count and baseline identifier.</li>
+  <li><strong>Material changes.</strong> A change to the factor structure, distribution, estimator, official window or
+      floor is a model change requiring revalidation. A scheduled recalibration on the existing window definition is
+      not.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<div class="res" id="res-s133" hidden><div class="res-h">Results of this run · run record</div><div class="res-b"></div></div>
+<h2 id="s14">14. References</h2>
+<ol class="ref">
+  <li>Vasicek, O. (1977). An equilibrium characterization of the term structure. <em>Journal of Financial Economics</em>, 5(2), 177&ndash;188.</li>
+  <li>Hull, J., &amp; White, A. (1990). Pricing interest-rate-derivative securities. <em>Review of Financial Studies</em>, 3(4), 573&ndash;592.</li>
+  <li>Hull, J., &amp; White, A. (1994). Numerical procedures for implementing term structure models II: Two-factor models. <em>Journal of Derivatives</em>, 2(2), 37&ndash;48.</li>
+  <li>Heath, D., Jarrow, R., &amp; Morton, A. (1992). Bond pricing and the term structure of interest rates: A new methodology for contingent claims valuation. <em>Econometrica</em>, 60(1), 77&ndash;105.</li>
+  <li>Brigo, D., &amp; Mercurio, F. (2006). <em>Interest Rate Models: Theory and Practice</em> (2nd ed.). Springer.</li>
+  <li>Litterman, R., &amp; Scheinkman, J. (1991). Common factors affecting bond returns. <em>Journal of Fixed Income</em>, 1(1), 54&ndash;61.</li>
+  <li>Diebold, F. X., &amp; Li, C. (2006). Forecasting the term structure of government bond yields. <em>Journal of Econometrics</em>, 130(2), 337&ndash;364.</li>
+  <li>Rebonato, R., Mahal, S., Joshi, M., Buchholz, L.-D., &amp; Nyholm, K. (2005). Evolving yield curves in the real-world measures: A semi-parametric approach. <em>Journal of Risk</em>, 7(3), 29&ndash;61.</li>
+  <li>Adrian, T., Crump, R. K., &amp; Moench, E. (2013). Pricing the term structure with linear regressions. <em>Journal of Financial Economics</em>, 110(1), 110&ndash;138.</li>
+  <li>Campbell, J. Y., &amp; Shiller, R. J. (1991). Yield spreads and interest rate movements: A bird's eye view. <em>Review of Economic Studies</em>, 58(3), 495&ndash;514.</li>
+  <li>Duffie, D., &amp; Kan, R. (1996). A yield-factor model of interest rates. <em>Mathematical Finance</em>, 6(4), 379&ndash;406.</li>
+  <li>Kendall, M. G. (1954). Note on bias in the estimation of autocorrelation. <em>Biometrika</em>, 41(3/4), 403&ndash;404.</li>
+  <li>Glasserman, P. (2004). <em>Monte Carlo Methods in Financial Engineering</em>. Springer.</li>
+  <li>Efron, B., &amp; Tibshirani, R. J. (1993). <em>An Introduction to the Bootstrap</em>. Chapman &amp; Hall.</li>
+  <li>Working, H. (1960). Note on the correlation of first differences of averages in a random chain. <em>Econometrica</em>, 28(4), 916&ndash;918.</li>
+  <li>Fuster, A., Goodman, L., Lucca, D., Madar, L., Molloy, L., &amp; Willen, P. (2013). The rising gap between primary and secondary mortgage rates. <em>Federal Reserve Bank of New York Economic Policy Review</em>, 19(2), 17&ndash;39.</li>
+  <li>Hayre, L. (Ed.) (2001). <em>Salomon Smith Barney Guide to Mortgage-Backed and Asset-Backed Securities</em>. Wiley.</li>
+  <li>Chan, K. C., Karolyi, G. A., Longstaff, F. A., &amp; Sanders, A. B. (1992). An empirical comparison of alternative models of the short-term interest rate. <em>Journal of Finance</em>, 47(3), 1209&ndash;1227.</li>
+  <li>Black, F. (1995). Interest rates as options. <em>Journal of Finance</em>, 50(5), 1371&ndash;1376.</li>
+  <li>Board of Governors of the Federal Reserve System and Office of the Comptroller of the Currency (2011). <em>Supervisory Guidance on Model Risk Management</em>. SR Letter 11-7 / OCC Bulletin 2011-12.</li>
+  <li>Federal Housing Finance Agency (2013). <em>Model Risk Management Guidance</em>. Advisory Bulletin AB 2013-07.</li>
+  <li>Bauer, M. D., Rudebusch, G. D., &amp; Wu, J. C. (2012). Correcting estimation bias in dynamic term structure models. <em>Journal of Business &amp; Economic Statistics</em>, 30(3), 454&ndash;467.</li>
+  <li>Federal Reserve Bank of St. Louis. <em>FRED, Federal Reserve Economic Data</em>. Series SOFR (Federal Reserve Bank of New York), DFF and DGS1 to DGS30 (Board of Governors, H.15), MORTGAGE30US (Freddie Mac Primary Mortgage Market Survey). https://fred.stlouisfed.org</li>
+  <li>Kupiec, P. H. (1995). Techniques for verifying the accuracy of risk measurement models. <em>Journal of Derivatives</em>, 3(2), 73&ndash;84.</li>
+  <li>Rudebusch, G. D. (2002). Term structure evidence on interest rate smoothing and monetary policy inertia. <em>Journal of Monetary Economics</em>, 49(6), 1161&ndash;1187.</li>
+  <li>Coibion, O., &amp; Gorodnichenko, Y. (2012). Why are target interest rate changes so persistent? <em>American Economic Journal: Macroeconomics</em>, 4(4), 126&ndash;162.</li>
+  <li>Box, G. E. P., Jenkins, G. M., &amp; Reinsel, G. C. (2008). <em>Time Series Analysis: Forecasting and Control</em> (4th ed.). Wiley.</li>
+  <li>Fama, E. F., &amp; Bliss, R. R. (1987). The information in long-maturity forward rates. <em>American Economic Review</em>, 77(4), 680&ndash;692.</li>
+</ol>
+
+</div>
+
+<script>if (window.fillWhitepaper) fillWhitepaper();</script>
+</body>
+</html>

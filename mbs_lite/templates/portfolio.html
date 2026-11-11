@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MBS Income Risk — Portfolio</title>
+<link rel="stylesheet" href="styles.css">
+<script src="data.js"></script>
+<script src="common.js"></script>
+</head><body>
+<div id="top"></div>
+<script>if (window.DATA) header('portfolio.html');</script>
+<div class="wrap">
+<div class="kpis" id="pkpis"></div>
+<div class="card" id="productCard"><h2>By product</h2><div class="sub">Face-weighted · income and CPR are year 1 on the baseline rate path</div><table class="g"><thead id="hProd"></thead><tbody id="bProd"></tbody></table>
+  <h3>By pool story</h3><table class="g"><thead id="hStory"></thead><tbody id="bStory"></tbody></table>
+  <div class="note">Pool story changes speeds: specified, geographic and low-loan-balance pools refinance more slowly than generic (TBA-deliverable) pools.</div></div>
+ <div class="card" id="incCard"><h2>Refinance incentive</h2><div class="sub" id="incSub"></div><table class="g"><thead id="hInc"></thead><tbody id="bInc"></tbody></table>
+  <div class="note">Incentive = WAC minus the rate the borrower could refinance into today (the 30y mortgage rate, less a product offset for 15y, 20y and 10y loans). Positive means borrowers save by refinancing, so those CUSIPs prepay fastest when rates fall.</div></div>
+<div class="card" id="couponCard"><h2>By coupon</h2><div class="sub">Face-weighted · income and CPR are year 1 on the baseline rate path</div><table class="g"><thead id="hCpn"></thead><tbody id="bCpn"></tbody></table></div>
+<div class="card" id="vintageCard"><h2>By vintage</h2><div class="sub">Issue year · face-weighted</div><table class="g"><thead id="hVin"></thead><tbody id="bVin"></tbody></table></div>
+<div class="card stackc" id="holdCard"><div><h2>Holdings</h2><div class="sub" id="holdSub"></div></div>
+ <div class="grp"><input type="search" id="q" placeholder="Filter: CUSIP, pool, product, coupon, story …" aria-label="Filter holdings" style="width:min(360px,100%)"><span class="note" id="qn" style="margin:0"></span></div>
+ <div style="overflow-x:auto;max-height:640px;overflow-y:auto"><table class="g"><thead id="hHold"></thead><tbody id="bHold"></tbody></table></div>
+ <div class="note">Click a column to sort. Year-1 income and CPR are on the baseline rate path; WAL holds rates at today's levels. Per-CUSIP values are in <code>outputs/holdings_projected.csv</code>; month-by-month balance, scheduled paydown, prepaid UPB and income per CUSIP are in <code>outputs/cusip_monthly_baseline.csv</code> (baseline path), <code>cusip_monthly_mean.csv</code> (average of all paths) and <code>cusip_monthly_P50.csv</code> / <code>P05.csv</code> (representative outcomes).</div></div>
+</div>
+<script>
+const K = D.kpi, HD = D.holdings, U = K.upb, D1 = D.ear.cumulative[0];
+const hasPx = HD.some(r => r.price != null);
+$('pkpis').innerHTML = [
+  ['Current face', fm(U), `${K.positions.toLocaleString('en-US')} CUSIPs · as of ${D.meta.as_of}`],
+  ['Market value', K.market_value == null ? '—' : fm(K.market_value), K.price == null ? 'no market_price in the file' : `Price ${num(K.price, 2)}` + (K.price_coverage < 0.999 ? ` · ${num(100 * K.price_coverage, 0)}% of face priced` : '')],
+  ['Coupon / WAC', `${num(K.coupon, 2)} / ${num(K.wac, 2)}`, `30y mortgage rate ${fp(K.spot_mtg, 2)} at the as-of`],
+  ['WALA / WAM', `${num(K.wala, 0)} / ${num(K.wam, 0)} mo`, `Projected WAL ${num(K.wal, 1)}y (rates held)`],
+  ['Avg loan size', '$' + num(K.loan_size / 1e3, 0) + 'k', 'face-weighted, current'],
+  ['Baseline CPR (12m)', fp(D1.cpr.baseline), `simulated P5 ${fp(D1.cpr.p5)} · P95 ${fp(D1.cpr.p95)}`],
+  ['Baseline 12m income', fm(D1.baseline), `income yield ${fp(100 * D1.baseline / U, 2)} · EaR 95% ${fm(D1.conf['95'].shortfall)}`],
+].map(([l, v, s]) => `<div class="kpi"><div class="l">${l}</div><div class="v" title="${String(v).replace(/<[^>]*>/g, '')}">${v}</div><div class="s" title="${String(s).replace(/<[^>]*>/g, '').replace(/"/g, '&quot;')}">${s}</div></div>`).join('');
+
+const shareBar = (u, mx, c, w = 120) => `<span class="bar" style="width:${Math.max(2, w * u / mx).toFixed(0)}px;background:${c}"></span> ${num(100 * u / U, 1)}%`;
+const COLS = `<tr><th></th><th>CUSIPs</th><th>Face $bn</th><th style="text-align:left">Share</th><th>Cpn</th><th>WAC</th><th>WALA</th><th>WAL</th>${hasPx ? '<th>Mkt px</th>' : ''}<th>CPR Y1</th><th>Income Y1 $m</th></tr>`;
+function table(head, body, groups, label, color = '#1F4E8C', bw = 120){
+  const mx = Math.max(...groups.map(g => g.upb), 1);
+  $(head).innerHTML = COLS.replace('<th></th>', `<th>${label}</th>`);
+  $(body).innerHTML = groups.map(g => `<tr><td>${esc(g.key)}</td><td>${g.n}</td><td>${num(g.upb / 1e9, 2)}</td><td style="text-align:left">${shareBar(g.upb, mx, color, bw)}</td><td>${num(g.coupon, 2)}</td><td>${num(g.wac, 2)}</td><td>${num(g.wala, 0)}</td><td>${num(g.wal, 1)}</td>${hasPx ? `<td>${g.price == null ? '—' : num(g.price, 2)}</td>` : ''}<td>${fp(g.cpr)}</td><td>${fv(g.income, 1)}</td></tr>`).join(''); }
+const ord = ['30Y', '20Y', '15Y', '10Y'];
+table('hProd', 'bProd', groupBy(HD, r => r.product).sort((a, b) => ord.indexOf(a.key) - ord.indexOf(b.key)), 'Product');
+const SN = {Generic: 'Generic (TBA-deliverable)', Spec: 'Specified pool', Geo: 'Geographic story', LLB: 'Low loan balance'};
+table('hStory', 'bStory', groupBy(HD, r => SN[r.story] || r.story).sort((a, b) => b.upb - a.upb), 'Story', '#2E8B7A');
+table('hCpn', 'bCpn', groupBy(HD, r => num(r.coupon, r.coupon % 0.5 ? 3 : 1)).sort((a, b) => parseFloat(a.key) - parseFloat(b.key)), 'Coupon');
+table('hVin', 'bVin', groupBy(HD, r => String(r.vintage)).sort((a, b) => a.key.localeCompare(b.key)), 'Vintage');
+const BK = [[-1e9, -150, 'below −150'], [-150, -100, '−150 to −100'], [-100, -50, '−100 to −50'], [-50, 0, '−50 to 0'], [0, 50, '0 to +50'], [50, 100, '+50 to +100'], [100, 1e9, 'above +100']];
+const ig = BK.map(([a, b, l]) => { const rs = HD.filter(r => r.incentive_bp >= a && r.incentive_bp < b); const g = groupBy(rs, () => l)[0] || {key: l, n: 0, upb: 0, coupon: NaN, wac: NaN, wala: NaN, wal: NaN, cpr: NaN, income: 0, price: null}; g.pos = a >= 0; return g; });
+$('incSub').textContent = `Face by how far the loans are in or out of the money at ${D.meta.as_of} (30y mortgage rate ${fp(K.spot_mtg, 2)})`;
+{ const mx = Math.max(...ig.map(g => g.upb), 1);
+  $('hInc').innerHTML = '<tr><th>WAC − refi rate (bp)</th><th>CUSIPs</th><th>Face $bn</th><th style="text-align:left">Share</th><th>CPR Y1</th></tr>';
+  $('bInc').innerHTML = ig.map(g => `<tr><td>${g.key}</td><td>${g.n}</td><td>${num(g.upb / 1e9, 2)}</td><td style="text-align:left">${shareBar(g.upb, mx, g.pos ? '#D9772B' : '#8FB0DC', 60)}</td><td>${g.n ? fp(g.cpr) : '—'}</td></tr>`).join(''); }
+
+// holdings table: filter + sort
+const HC = [['cusip', 'CUSIP', 's'], ['pool', 'Pool', 's'], ['product', 'Prod', 's'], ['coupon', 'Cpn', 2], ['wac', 'WAC', 3], ['wala', 'WALA', 0], ['wam', 'WAM', 0],
+  ['upb', 'Face $m', 'm'], ['loan_size', 'Loan $k', 'k'], ['story', 'Story', 's'], ['vintage', 'Vint', 's'], ...(hasPx ? [['price', 'Px', 2]] : []),
+  ['incentive_bp', 'Incentive bp', 'b'], ['burnout', 'Burnout y', 2], ['wal', 'WAL y', 1], ['cpr_y1', 'CPR Y1', 1], ['income_y1', 'Income Y1 $m', 'm2']];
+let SK = 'upb', SD = -1, Q = '';
+const fmtc = (v, t) => v == null ? '—' : t === 's' ? esc(v) : t === 'm' ? num(v / 1e6, 1) : t === 'm2' ? num(v / 1e6, 2) : t === 'k' ? num(v / 1e3, 0) : t === 'b' ? fbp(v) : num(v, t);
+function renderHold(){
+  const q = Q.trim().toLowerCase();
+  let rs = q ? HD.filter(r => [r.cusip, r.pool, r.product, r.story, r.vintage, num(r.coupon, 1)].join(' ').toLowerCase().includes(q)) : HD.slice();
+  rs.sort((a, b) => { const x = a[SK], y = b[SK]; return (typeof x === 'string' ? String(x).localeCompare(String(y)) : (x ?? -1e18) - (y ?? -1e18)) * SD; });
+  $('hHold').innerHTML = '<tr>' + HC.map(([k, l]) => `<th class="sort${k === SK ? ' on' : ''}" data-k="${k}" tabindex="0" aria-sort="${k === SK ? (SD > 0 ? 'ascending' : 'descending') : 'none'}">${l}${k === SK ? (SD > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
+  $('bHold').innerHTML = rs.map(r => '<tr>' + HC.map(([k, , t]) => `<td>${fmtc(r[k], t)}</td>`).join('') + '</tr>').join('');
+  const u = rs.reduce((a, r) => a + r.upb, 0);
+  $('qn').textContent = q ? `${rs.length} of ${HD.length} CUSIPs · ${fm(u)} face` : '';
+  $('holdSub').textContent = `${HD.length.toLocaleString('en-US')} CUSIPs from ${D.meta.portfolio_file} · burnout ${D.model.burnout_source.file ? 'from the file' : 'estimated from the mortgage-rate history'}`; }
+$('hHold').addEventListener('click', e => { const th = e.target.closest('th[data-k]'); if (!th) return; const k = th.dataset.k; SD = k === SK ? -SD : (k === 'cusip' || k === 'pool' || k === 'story' ? 1 : -1); SK = k; renderHold(); });
+$('hHold').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.target.click(); } });
+$('q').addEventListener('input', e => { Q = e.target.value; renderHold(); });
+renderHold();
+</script>
+</body></html>

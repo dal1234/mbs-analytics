@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# Simplified prepayment model: turnover + refinancing S-curve (CPR, percent per year)
+#
+#   CPR = (turnover + refi + involuntary) x tuning_multiplier x prepay.multiplier (model.yaml)
+#
+#   incentive = WAC - (average 30y mortgage rate of the two prior month-ends + product rate_offset)
+#   turnover  = turnover_base x lock_in x seasoning_ramp x seasonality x product x story x size^turnover_size_elast
+#               lock_in = max(lockin_floor, 1 + lockin_slope x incentive) when incentive < 0, else 1
+#               seasoning_ramp = min(1, (age + 1) / turnover_ramp_months)
+#   refi      = refi_max / (1 + exp(-(incentive - refi_mid) / refi_scale))
+#               x min(1, (age + 1) / refi_ramp_months) x exp(-burnout_k x burnout_years) x product x story
+#               x size^refi_size_elast
+#   size      = avg_loan_size / loan_size_ref, clipped to [0.2, 5]
+#   burnout_years = time the pool has spent more than 50 bp in the money
+#
+# Values: fitted to Fannie Mae monthly factor files (pool months 202608 and 202609, 435k pool-months),
+# then tuned 1.10x to the speeds of the demo book. refi_max is a prior, not a fit (few pools were deep in the money).
+# Refit these to your own speed history before relying on the results.
+# ---------------------------------------------------------------------------
+turnover_base: 7.014
+lockin_slope: 0.1281
+lockin_floor: 0.3948
+turnover_ramp_months: 48.0
+refi_max: 50.0
+refi_mid: 1.360
+refi_scale: 0.6685
+refi_ramp_months: 2.0
+burnout_k: 0.0814
+loan_size_ref: 300000.0
+turnover_size_elast: -0.1306
+refi_size_elast: 0.2093
+tuning_multiplier: 1.10
+
+# month-of-year multipliers on turnover (Jan..Dec); normalised to average 1 by the model
+seasonality: [0.80, 0.80, 0.95, 1.05, 1.10, 1.15, 1.15, 1.15, 1.00, 1.00, 0.90, 0.85]
+
+# product: rate_offset (percent) is added to the 30y mortgage rate to get the rate that product refinances at;
+# turnover / refi are multipliers; involuntary is a constant CPR (buyouts and defaults)
+product:
+  30Y: {rate_offset: 0.00, turnover: 1.000, refi: 1.000, involuntary: 0.484}
+  20Y: {rate_offset: -0.35, turnover: 1.000, refi: 0.900, involuntary: 0.300}
+  15Y: {rate_offset: -0.60, turnover: 1.418, refi: 1.550, involuntary: 0.144}
+  10Y: {rate_offset: -0.70, turnover: 1.100, refi: 0.700, involuntary: 0.000}
+
+# pool story (story_group column): Generic = TBA-deliverable, Spec = specified pool, Geo = geographic story,
+# LLB = low loan balance
+story_turnover: {Generic: 1.0, Spec: 1.0, Geo: 0.9, LLB: 1.0}
+story_refi: {Generic: 1.0, Spec: 0.797, Geo: 0.781, LLB: 0.968}

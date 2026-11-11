@@ -1,0 +1,17 @@
+# ---------------------------------------------------------------------------
+# Rate model - COMPARISON set-up ("vendor emulation"): our best reading of a risk-neutral vendor model.
+#   centre: implied forwards from a SOFR swap curve (rates.yaml baseline.swap: a curve file, or estimated)
+#   width:  market-implied normal volatilities (rates.yaml volatility.market), random walk, no mean reversion
+# Everything else (data, calibration, simulation settings, floor) comes from rates.yaml, so the two runs use the same
+# random numbers and differ only in these choices. Not the validated model. See README, "Two approaches".
+# ---------------------------------------------------------------------------
+extends: rates.yaml
+
+baseline:
+  type: swap            # or: file, with baseline.file = the other model's zero-vol path (README)
+
+volatility:
+  type: market
+
+output:
+  dir: ../rates_output_vendor

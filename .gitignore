@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+outputs/
+rates_output/
+rates_history/
+history/mock_inputs/
+tmp/
+outputs_vendor/
+rates_output_vendor/

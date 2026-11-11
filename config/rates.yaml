@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# Rate model (ratemodel) - OFFICIAL run configuration: Treasury forward baseline + historical volatility.
+# The comparison set-up (SOFR swap baseline + market-implied volatility) is config/rates_vendor.yaml.
+# Paths are relative to this file.
+#
+# The model, its calibration windows, estimator and the simulation settings below are fixed by design (whitepaper
+# sections 10 and 13): changing any of them is a model change that requires revalidation. Users choose the as-of
+# date and the baseline; calibration parameters are never set by hand.
+# ---------------------------------------------------------------------------
+
+data:
+  dir: ../data/fred           # FRED-format CSV cache, one file per series (see README)
+  refresh: false              # true = download missing/stale series from FRED first; false = offline
+
+calibration:
+  file: ../calibration/calibration.json   # the calibration in use; written by `run_rates.py --recalibrate`
+  archive_dir: ../calibration/archive     # every calibration is archived here, so earlier runs can be reproduced
+  max_age_months: 12                      # warn when the calibration is older than this (annual recalibration)
+
+simulation:                   # whitepaper section 10.1 (fixed by design)
+  n_paths: 5000               # official run: every measure (95% and 99%, expected shortfall, outcomes, attribution)
+  tail_paths: 5000            # paths for the 99% measures; equal to n_paths = the same run (no second projection)
+  convergence_paths: [1000, 5000, 20000]  # V5 (when the calibration changes): official result vs a 20,000-path benchmark
+  horizon_months: 60
+  antithetic: true
+  moment_match: true
+  sampler: pseudo             # pseudo | sobol (scrambled Sobol, an independent check)
+  seed: 20261110
+  floor: 0.0                  # every simulated rate, decimal
+  alt_floor: -0.005           # V4: rerun floor when more than floor_trigger of paths touch the floor
+  floor_trigger: 0.05
+
+baseline:                     # the centre of the fan (zero-vol path). An input: changing it does not change the model
+  type: forward               # forward  implied forwards from the Treasury curve (official default)
+                              # swap     implied forwards from a SOFR swap curve (file below, or estimated)
+                              # flat     today's rates held
+                              # file     a monthly path: house view, or another model's zero-vol path
+  file: null                  # for type: file - CSV with month (1..60), short, y10, mort [, y1, y2, y5, y30], percent
+  swap:                       # for type: swap
+    curve_file: null          # CSV tenor,rate (percent): the SOFR swap/OIS par curve on the as-of date. When null the
+                              # curve is ESTIMATED as Treasury par yields + the spreads below (bills: today's SOFR-bill basis)
+    spreads_bp: {2Y: -18, 3Y: -22, 5Y: -30, 7Y: -37, 10Y: -45, 20Y: -75, 30Y: -80}   # swap minus Treasury; assumed
+
+volatility:                   # the width of the fan
+  type: historical            # historical  the calibrated model (whitepaper; official, validated)
+                              # market      market-implied comparison width (emulates a risk-neutral vendor model)
+  market:                     # for type: market. Normal vol in bp per year, one value per year (year 1, 2, ... 5)
+    sofr_bp: [61, 90, 90, 90, 90]
+    y10_bp: [90, 90, 90, 90, 90]
+    corr: null                # SOFR/10-year shock correlation; null = the historical 12-month correlation
+    source: "Solved from the other model's July 2026 SOFR percentiles (P5/P95 3.0/5.0% at 1y, ~0.75/7.0% at 5y); 10-year assumed"
+
+output:
+  dir: ../rates_output

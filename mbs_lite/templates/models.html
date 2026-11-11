@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MBS Income Risk — Models &amp; assumptions</title>
+<link rel="stylesheet" href="styles.css">
+<script src="data.js"></script>
+<script src="common.js"></script>
+</head><body>
+<div id="top"></div>
+<script>if (window.DATA) header('models.html');</script>
+<div class="wrap">
+<div class="card stackc" id="decisions" style="margin-top:24px"><div><h2>Business decisions behind these numbers<i class="i" tabindex="0" data-tip="Choices about what the analysis measures, not about how the models work. They change EaR as much as the models do, so they should be confirmed by the business owner and kept fixed from month to month.">i</i></h2>
+ <div class="sub" id="decSub"></div></div>
+ <div style="overflow-x:auto"><table class="g wrapall"><thead><tr><th style="width:15%">Decision</th><th style="width:22%">Current assumption</th><th style="width:25%">Alternatives</th><th style="width:22%">Effect on EaR 95% if changed (1y / 5y cumulative)</th><th>Where it is set</th></tr></thead><tbody id="decRows"></tbody></table></div>
+ <div class="note" id="decNote"></div></div>
+
+<div class="card"><h2>How the numbers are made</h2><div class="sub">The same engine runs on the baseline rate path and on every Monte Carlo path; EaR compares the two</div>
+ <div class="flow" id="flow"></div></div>
+
+<div class="card" id="ratesCard"><h2>1 · Rate paths</h2><div class="sub">ratemodel v<span id="rmv"></span>: real-world, baseline-centred, two-factor Gaussian model · full methodology on the <a href="whitepaper.html">Rate model</a> page</div>
+ <div class="explain" id="ratesText"></div>
+ <div class="row" style="margin-top:6px">
+  <div><h3>Parameters in use (<span id="calName"></span>)</h3><table class="g"><tbody id="calParams"></tbody></table></div>
+  <div><h3>What sets the width of the fan</h3><div class="explain" id="widthText" style="font-size:12px"></div></div></div></div>
+
+<div class="card" id="prepayCard"><h2>2 · Prepayment model</h2><div class="sub">A simple pool-level S-curve: how fast each CUSIP pays down each month</div>
+ <div class="explain" id="prepayText"></div>
+ <div class="formula" id="prepayFormula"></div>
+ <div class="row"><div><h3>Parameters</h3><table class="g"><tbody id="prepayParams"></tbody></table></div>
+  <div><h3>By product and pool story</h3><table class="g"><thead><tr><th>Product</th><th>Rate offset</th><th>Turnover ×</th><th>Refi ×</th><th>Involuntary CPR</th></tr></thead><tbody id="prepayProd"></tbody></table>
+   <table class="g" style="margin-top:10px"><thead><tr><th>Pool story</th><th>Refi ×</th></tr></thead><tbody id="prepayStory"></tbody></table></div></div></div>
+
+<div class="card" id="incomeCard"><h2>3 · Cash flows and income</h2><div class="sub">For every CUSIP, every month, on the baseline and on every path</div>
+ <div class="formula" id="incomeFormula"></div>
+ <div class="explain" id="incomeText"></div></div>
+
+<div class="card" id="riskCard"><h2>4 · Risk measures</h2><div class="sub">What the Earnings at risk page reports (whitepaper section 8)</div>
+ <div class="formula" id="riskFormula"></div>
+ <div class="explain" id="riskText"></div></div>
+
+<div class="card" id="assumpCard"><h2>Assumptions in this run</h2><div class="sub">From <code>config/model.yaml</code>, <code>config/prepay_params.yaml</code>, <code>config/rates.yaml</code> and the stored calibration</div>
+ <table class="g wrapall"><thead><tr><th style="width:22%">Assumption</th><th style="width:28%">Setting</th><th>Why it matters</th></tr></thead><tbody id="assump"></tbody></table></div>
+
+<div class="limits" id="limits"><h2>Limitations</h2><div class="sub">What these numbers do not cover, and where they are least reliable. The rate model's own assumptions A1–A13 are in whitepaper section 12.</div><ul id="limitList"></ul></div>
+
+<div class="card" id="checks"><h2>Checks in this run</h2><div class="sub">Run by <code>run_model.py</code>; detailed validation results V1–V8 are on the <a href="whitepaper.html#res-s11">Rate model</a> page</div>
+ <table class="g wrapall"><thead><tr><th style="width:28%">Check</th><th style="width:8%">Status</th><th>Detail</th></tr></thead><tbody id="checkRows"></tbody></table></div>
+</div>
+<script>
+const K = D.kpi, M = D.model, P = M.prepay, RM = D.rate_model, rec = RM.record, CAL = RM.calibration, Yr = D.meta.years, OUT = D.outcomes;
+const off = CAL.calibrations.find(c => c.name === CAL.official), hl = phi => Math.log(0.5) / Math.log(phi) / 12, bpv = s => s * Math.sqrt(12) * 1e4;
+const sd = (phi, sig, h, mom = 0) => { let a = 1, b = 0, s2 = 0; for (let j = 0; j < h; j++) { s2 += a * a; const n = (phi + mom) * a - phi * mom * b; b = a; a = n; } return sig * Math.sqrt(s2) * 1e4; };
+const pctOf = v => bad(v) ? '—' : num(100 * v, 2) + '%';
+$('rmv').textContent = CAL.model_version;
+const steps = [['Portfolio', `${K.positions.toLocaleString('en-US')} CUSIPs held at ${D.meta.as_of}: face, coupon, WAC, age and remaining term.`],
+  ['Baseline', `${esc(rec.baseline.description)}. Income on this path is the reference for every shortfall.`],
+  ['Rate paths', `${K.mc_paths.toLocaleString('en-US')} paths${K.tail_paths !== K.mc_paths ? ' (and ' + K.tail_paths.toLocaleString('en-US') + ' for 99%)' : ''}: baseline + zero-mean deviations of the short rate, 10-year yield and mortgage spread.`],
+  ['Prepayments & income', `The S-curve sets each CUSIP's speed; income = coupon + prepaid UPB reinvested at ${reinvLabel()}.`],
+  ['Risk', `Baseline income minus the 5th percentile, for years 1 to ${Yr}, cumulative and annual, with a confidence interval and the calibration range.`]];
+// ---- business decisions (top card)
+{ const DC = D.decisions || {rows: []}, by = k => DC.rows.find(r => r.key === k), ys = DC.years || [1, 5];
+  const eff = k => { const r = by(k); return r ? ys.map(y => fpc(100 * r['change_y' + y], 0)).join(' / ') + ` <span style="color:var(--muted)">(${esc(r.alternative)})</span>` : '—'; };
+  const v8r = RM.v58 && RM.v58.sensitivity.some(r => !r.official) ? ['recent', 'high_vol'].map(n => { const g = y => RM.v58.sensitivity.find(r => r.calibration === n && r.measure === 'cumulative' && r.years === y);
+    const o = y => RM.v58.sensitivity.find(r => r.official && r.measure === 'cumulative' && r.years === y);
+    return `${n}: ${ys.map(y => fpc(100 * (g(y).shortfall / o(y).shortfall - 1), 0)).join(' / ')}`; }).join('; ')
+    : (D.meta.setup && !D.meta.setup.validated ? 'not run: market-implied volatility does not come from the calibrations' : 'V8 not run');
+  const NM = '<span style="color:var(--muted)">not modelled</span>';
+  const SU = D.meta.setup || {validated: true}, C2 = SU.compare;
+  const CMP = C2 && C2.built ? `Compare with the <a href="${esc(C2.href.replace(/index\.html$/, 'models.html'))}">${esc(C2.label)}</a> dashboard, or run <code>tools/compare_runs.py</code>.` : 'Run the other set-up and <code>tools/compare_runs.py</code> (README 7a).';
+  const rows = [
+    ['What counts as income', 'Cash interest: the coupon on the held CUSIPs plus interest on reinvested principal. No premium amortization or discount accretion.', 'GAAP (effective-yield) income, which amortizes purchase premium and accretes discount; needs each CUSIP\'s book price.', NM + '. Premium holdings would show lower income and a larger hit when prepayments speed up.', 'Income engine (a code change)'],
+    ['Which principal is reinvested', M.reinvest_scheduled ? 'All principal received (prepaid and scheduled).' : 'Prepaid principal only; scheduled principal leaves the book, so the balance shrinks.', M.reinvest_scheduled ? 'Prepaid principal only.' : 'All principal received (the whitepaper\'s reference engine does this).', eff('reinvest_scheduled'), '<code>income.reinvest_scheduled_principal</code>'],
+    ['Reinvestment rate', `${reinvLabel()}, reset every month; cash earns from the month after it is received.`, 'A spread over SOFR; a term rate; the yield on new MBS purchases (which would also add prepayment risk on the new holdings).', eff('reinvest_spread') + '<br>' + eff('reinvest_term') + '<br>New MBS: ' + NM, '<code>income.reinvest_rate_series</code>, <code>reinvest_spread_bp</code>'],
+    ['Balance sheet', 'Static: no purchases beyond reinvestment, no sales. Asset side only: no funding cost or hedges, so the result is interest income, not net interest income.', 'A planned purchase programme; funding and hedge income for net interest income.', NM, 'Not configurable'],
+    ['Reference point for EaR (centre of the rate fan)', `${esc(RM.record.baseline.description)}.`, 'Treasury forwards (official); SOFR swap forwards (a curve file, or estimated from Treasuries); today\'s rates held flat; a house view; another model\'s zero-vol path.', 'Changes the centre of the fan and the income EaR is measured from. Compare by rerunning <code>run_rates.py --baseline flat</code> (or <code>swap</code>, <code>file</code>); README section 7a.', '<code>baseline.type</code> in config/rates.yaml (an input: no revalidation)'],
+    ['Risk measure', `Baseline income minus the 5th percentile, years 1–${D.meta.years}, cumulative and annual. 99% and expected shortfall shown alongside.`, 'Measured against mean income instead of baseline; another confidence level.', `Against the mean, EaR is smaller by the mean − baseline gap (${fpc(100 * D.ear.cumulative[0].mean_minus_baseline_pct, 2)} of baseline at 1 year).`, 'Fixed by the whitepaper (section 8)'],
+    ['Official calibration window', `${esc(CAL.official)}: ${esc(off.window_start)} to ${esc(off.window_end)}.`, 'Last 10 years (recent); from 1976 (high_vol).', v8r, 'Governed model choice (whitepaper D9, 13)'],
+    ['Width of the rate fan (volatility)', SU.validated ? 'Historical: how far rates have ended up from the forward since 1990 (the validated model).' : `<b>Market-implied (comparison set-up):</b> ${esc(SU.vol_description)}.`, SU.validated ? 'Market-implied normal vols (option prices, or another model\'s percentiles): what a risk-neutral vendor model uses.' : 'Historical (the validated, official set-up).', CMP, '<code>volatility.type</code> in config/rates.yaml; README section 7a'],
+  ];
+  $('decRows').innerHTML = rows.map(r => `<tr>${r.map((c, i) => `<td${i === 0 ? ' style="font-weight:600"' : ''}>${c}</td>`).join('')}</tr>`).join('');
+  $('decSub').textContent = 'What this run assumes about what to measure. Confirm or change these with the business owner; the measured effects use this run\'s portfolio and rates.';
+  $('decNote').textContent = DC.paths ? `Effects are the % change in EaR 95% with one decision flipped and everything else unchanged, measured on ${DC.paths.toLocaleString('en-US')} of the same simulated paths (risk.decision_paths in config/model.yaml). For comparison, a ±25% error in every prepayment speed moved EaR by about ±20–25% on the sample portfolio.` : 'Decision sensitivities were not computed (risk.decision_paths = 0).'; }
+
+$('flow').innerHTML = steps.map(([t, d], i) => `${i ? '<div class="ar" aria-hidden="true">→</div>' : ''}<div class="st"><b>${i + 1}. ${t}</b>${d}</div>`).join('');
+
+$('ratesText').innerHTML = `
+<p><b>Centred on a baseline.</b> Every simulated rate is the baseline path plus a random deviation whose expected value is zero. The baseline in this run: ${esc(rec.baseline.description)}. The model does not forecast the level of rates; changing the baseline does not change the model or its calibration.</p>
+<p><b>Two factors plus a spread.</b> The deviation of the short rate (1M SOFR) and of the 10-year Treasury each follow a mean-reverting process with correlated shocks. Each factor also has <b>momentum</b>: a move tends to continue for a few months before mean reversion takes over, as in Fed easing and tightening cycles (short-rate momentum ${num(off.mom_short || 0, 2)}, 10-year ${num(off.mom_long || 0, 2)}). The 30-year mortgage rate moves by β times the 10-year deviation plus its own spread, and is calibrated so its fan is as wide at each horizon as the mortgage rate has historically departed from its forward. The 1-, 2-, 5- and 30-year yields are fixed combinations of the two factors. Every rate is floored at ${num(100 * rec.simulation.floor, 2)}%.</p>
+${(D.meta.setup && !D.meta.setup.validated) ? `<p class="mocknote"><b>This dashboard uses a comparison set-up:</b> ${esc(D.meta.setup.vol_description)}. The fan width below comes from those market-implied volatilities, not from the calibration described in this section; the calibration still sets the mortgage spread, β and the other tenors.</p>` : ''}
+<p><b>Calibrated to history, not set by users.</b> The fan is a deviation from the forward baseline, so it is fitted to how far rates have historically ended up from the forward: for every month since 1976, the Treasury curve's forward for 3 to 60 months later is compared with the rate that actually occurred, and the fan is made as wide at each horizon as those misses were (their standard deviation). One calibration is official (<b>${esc(CAL.official)}</b>, ${esc(off.window_start)} to ${esc(off.window_end)}); <i>recent</i> (last 10 years) and <i>high_vol</i> (from 1976) are run beside it as a model-risk range. The calibration is stored (id <code>${esc(CAL.calibration_id)}</code>) and refitted annually or on demand with <code>run_rates.py --recalibrate</code>.</p>
+<p><b>Simulation.</b> ${rec.simulation.n_paths.toLocaleString('en-US')} monthly paths over ${rec.simulation.n_months} months, antithetic and moment-matched, fixed seed ${rec.simulation.seed}. ${rec.simulation.tail_paths !== rec.simulation.n_paths ? 'A second run of ' + rec.simulation.tail_paths.toLocaleString('en-US') + ' paths gives the 99% measures and expected shortfall.' : 'The same paths give the 95% and 99% measures and expected shortfall; V5 checks them against a ' + Math.max(...rec.simulation.convergence_paths).toLocaleString('en-US') + '-path run whenever the calibration changes.'}</p>`;
+$('calName').textContent = `${CAL.official}, ${off.window_start} to ${off.window_end}`;
+$('calParams').innerHTML = [['Short factor: fan st.dev. at 1 / 5 years (bp)', `${num(sd(off.phi_short, off.sigma_short, 12, off.mom_short || 0), 0)} / ${num(sd(off.phi_short, off.sigma_short, 60, off.mom_short || 0), 0)}`],
+  ['Short factor: half-life (years); momentum', `${num(hl(off.phi_short), 1)}; ${num(off.mom_short || 0, 2)}`],
+  ['10-year factor: fan st.dev. at 1 / 5 years (bp)', `${num(sd(off.phi_long, off.sigma_long, 12, off.mom_long || 0), 0)} / ${num(sd(off.phi_long, off.sigma_long, 60, off.mom_long || 0), 0)}`],
+  ['10-year factor: half-life (years); momentum', `${num(hl(off.phi_long), 1)}; ${num(off.mom_long || 0, 2)}`],
+  ['Short/long correlation', num(off.rho, 2)], ['Mortgage β to 10-year', num(off.beta_mort, 2)],
+  ['Spread: volatility (bp/yr); half-life (years)', `${num(bpv(off.sigma_spread), 0)}; ${num(hl(off.phi_spread), 1)}`],
+  ['Flags', rec.calibration.flags.length ? esc(rec.calibration.flags.join('; ')) : 'none']].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
+const v8 = RM.v58 ? RM.v58.sensitivity.filter(r => r.measure === 'cumulative' && r.years === 1) : [];
+$('widthText').innerHTML = `<p>Three parameters per factor set the fan's shape: σ how fast it opens, momentum how long a move keeps going (a high value makes the fan widen fast over the first one to two years, as rate cycles do), and φ (mean reversion) how much it keeps widening after that. In this calibration the short rate's 1-year and 5-year standard deviations are ${num(sd(off.phi_short, off.sigma_short, 12, off.mom_short || 0), 0)} and ${num(sd(off.phi_short, off.sigma_short, 60, off.mom_short || 0), 0)} bp; the 10-year's ${num(sd(off.phi_long, off.sigma_long, 12, off.mom_long || 0), 0)} and ${num(sd(off.phi_long, off.sigma_long, 60, off.mom_long || 0), 0)} bp.</p>`
+  + `<p>Width is changed only by changing the calibration window, which is a governed model change (whitepaper 13). Users see the effect through the named alternatives: year-1 EaR 95% is ${v8.map(r => `<b>${esc(r.calibration)}</b> ${pctOf(r.shortfall_pct)}`).join(', ') || 'not computed'} of baseline income.</p>`
+  + `<p>Estimation error on 5-year fan width is roughly ±${num(100 * (CAL.parameter_uncertainty.find(r => r.rate === 'short' && r.month === 60) || {relative_sd: 0}).relative_sd, 0)}% (V7, short rate) and cannot be reduced by running more paths. The fan is fitted to historical misses of the forward, the same quantity it represents; forwards have also been biased (realised rates mostly below them since 1990), which affects the centre of the fan, not its width (whitepaper 6.1, A1).</p>`;
+
+$('prepayText').innerHTML = `
+<p>Borrowers pay off mortgages for two reasons: they <b>move</b> (turnover: home sales, a steady few percent a year) and they <b>refinance</b> when rates fall below their own loan rate. The model adds the two, plus a small constant for buyouts and defaults.</p>
+<ul><li><b>Refinance incentive</b> = WAC minus the mortgage rate the borrower could get (average of the two prior month-ends). The refi part follows an S-curve: almost nothing out of the money, rising steeply around +${num(P.refi_mid, 2)}%, levelling off at ${num(P.refi_max, 0)}% CPR.</li>
+<li><b>Lock-in</b>: out-of-the-money borrowers move less (turnover falls by ${num(100 * P.lockin_slope, 0)}% per point out of the money, to a floor of ${num(100 * P.lockin_floor, 0)}%).</li>
+<li><b>Seasoning</b>: turnover ramps up over ${num(P.turnover_ramp_months, 0)} months. <b>Seasonality</b>: more moves in summer than winter.</li>
+<li><b>Burnout</b>: refi speed falls ${num(100 * (1 - Math.exp(-P.burnout_k)), 0)}% per year spent more than 50 bp in the money${M.burnout_source.estimated ? ' (estimated from the mortgage-rate history since each pool was issued)' : ''}; it also builds up along each path.</li>
+<li><b>Loan size</b>: larger loans refinance faster, smaller loans turn over slightly faster.</li></ul>
+<p>The prepayment model is separate from the rate model and governed on its own (whitepaper section 1). ${M.prepay_multiplier !== 1 ? `<b>This run scales every speed by ${num(M.prepay_multiplier, 2)}×.</b>` : ''}</p>`;
+$('prepayFormula').textContent =
+`CPR       = (turnover + refi + involuntary) × ${num(P.tuning_multiplier, 2)} (tuning)${M.prepay_multiplier !== 1 ? ' × ' + num(M.prepay_multiplier, 2) + ' (stress)' : ''}
+incentive = WAC − (avg 30y mortgage rate of the 2 prior months + product offset)
+turnover  = ${num(P.turnover_base, 2)}% × lock-in × seasoning × seasonality × product × story × size^${num(P.turnover_size_elast, 2)}
+refi      = ${num(P.refi_max, 0)}% / (1 + exp(−(incentive − ${num(P.refi_mid, 2)}) / ${num(P.refi_scale, 2)})) × burnout × product × story × size^${num(P.refi_size_elast, 2)}
+SMM       = 1 − (1 − CPR)^(1/12)`;
+const PP = [['turnover_base', 'Base turnover (% CPR)', 2], ['lockin_slope', 'Lock-in slope (per point out of the money)', 3], ['lockin_floor', 'Lock-in floor', 2], ['turnover_ramp_months', 'Turnover seasoning (months)', 0],
+  ['refi_max', 'Refi maximum (% CPR)', 0], ['refi_mid', 'Refi midpoint (incentive, %)', 2], ['refi_scale', 'Refi steepness (scale, %)', 2], ['refi_ramp_months', 'Refi seasoning (months)', 0],
+  ['burnout_k', 'Burnout (per year in the money)', 3], ['loan_size_ref', 'Reference loan size ($)', 0], ['tuning_multiplier', 'Tuning multiplier', 2]];
+$('prepayParams').innerHTML = PP.map(([k, l, d]) => `<tr><td>${l}</td><td>${num(P[k], d)}</td></tr>`).join('');
+$('prepayProd').innerHTML = Object.entries(M.prepay_product).map(([p, v]) => `<tr><td>${p}</td><td>${fpc(v.rate_offset, 2)}</td><td>${num(v.turnover, 2)}</td><td>${num(v.refi, 2)}</td><td>${fp(v.involuntary, 2)}</td></tr>`).join('');
+$('prepayStory').innerHTML = Object.entries(M.prepay_story_refi).map(([s, v]) => `<tr><td>${s}</td><td>${num(v, 2)}</td></tr>`).join('');
+
+$('incomeFormula').textContent =
+`scheduled(t)     = level payment on balance(t−1) at the WAC over the remaining term − interest at the WAC
+prepaid(t)       = (balance(t−1) − scheduled(t)) × SMM(t)
+balance(t)       = balance(t−1) − prepaid(t) − scheduled(t)
+interest(t)      = balance(t−1) × coupon / 12
+reinvested(t)    = reinvested(t−1) + prepaid(t)${M.reinvest_scheduled ? ' + scheduled(t)' : ''}
+reinv income(t)  = reinvested(t−1) × ${reinvLabel()} at the start of month t / 12
+income(t)        = interest(t) + reinv income(t)`;
+$('incomeText').innerHTML = `
+<p><b>Interest</b> is the pass-through coupon on the balance still held. <b>Reinvestment income</b> is earned on prepaid principal in a cash-like account at ${reinvLabel()}, reset monthly along each path. A dollar prepaid in month t earns from month t+1 at the rate at the start of that month, and stays reinvested to the end of the horizon. ${M.reinvest_scheduled ? 'Scheduled principal is reinvested the same way.' : '<b>Scheduled principal is not reinvested</b> (a deliberate departure from the whitepaper\'s reference engine, which reinvests all returned principal): it leaves the book.'}</p>
+<p>Why income is at risk: when rates fall, prepayments speed up, so less of the book earns the security coupon and more earns SOFR, which has also fallen. When rates rise, prepayments slow and reinvested cash earns more, but only a little income is gained. That asymmetry is why mean income sits below baseline income and the distribution has a long left tail.</p>`;
+
+$('riskFormula').textContent =
+`income at 95%      = 5th percentile of simulated income over the horizon       (${K.mc_paths.toLocaleString('en-US')} paths)
+EaR 95% ($)        = baseline income − income at 95%
+EaR 95% (%)        = EaR 95% ($) / baseline income
+EaR 99%            = baseline income − 1st percentile                           (${K.tail_paths.toLocaleString('en-US')} paths)
+expected shortfall = baseline income − average income of the worst 5%           (${K.tail_paths.toLocaleString('en-US')} paths)
+mean − baseline    = convexity of income (reported, not an error)`;
+$('riskText').innerHTML = `
+<ul><li><b>Horizons</b>: years 1 to ${Yr}, both <b>cumulative</b> (from the as-of date to the end of year k) and <b>annual</b> (year k alone). The percentile is taken separately for each, because the worst paths over one year are not the worst over five.</li>
+<li><b>Confidence interval</b>: every 95% figure carries a 95% bootstrap interval in which antithetic pairs are resampled together.</li>
+<li><b>Calibration range</b> (V8): the same EaR under the <i>recent</i> and <i>high_vol</i> calibrations, shown beside the official figure.</li>
+<li><b>Representative outcomes</b>: paths ranked by income over the horizon; the "P10" outcome averages the ${OUT.paths_per_band} paths ranked around the 10th percentile (${OUT.band_pct}% of all paths), so coupon + reinvestment = income month by month. The baseline path is shown with them.</li>
+<li><b>Tail attribution</b>: each cohort's average income in the worst ${D.meta.tail_pct}% of paths minus its income on the baseline path; these add up to the tail's shortfall against the baseline.</li>
+<li><b>Over time</b>: each run appends its baseline, percentiles and EaR to <code>history/${esc(D.meta.history_file)}</code> with the calibration id, so a recalibration is visible.</li></ul>`;
+
+const A = [
+  ['Portfolio', `${K.positions.toLocaleString('en-US')} CUSIPs, ${fm(K.upb)} face at ${D.meta.as_of} (${esc(D.meta.portfolio_file)})`, 'Static book: no purchases or sales other than reinvesting prepaid principal.'],
+  ['Baseline', esc(rec.baseline.description), 'EaR is measured against income on this path; a forward baseline includes a term premium (whitepaper A1).'],
+  ['Calibration', `${esc(CAL.official)} ${esc(off.window_start)} to ${esc(off.window_end)}, id ${esc(CAL.calibration_id)}`, 'Fixed between recalibrations so EaR changes come from the book and the market, not settings.'],
+  ['Monte Carlo', `${K.mc_paths.toLocaleString('en-US')} official${K.tail_paths !== K.mc_paths ? ' + ' + K.tail_paths.toLocaleString('en-US') + ' tail' : ''} paths, antithetic, moment-matched, seed ${K.seed}`, '1,000 paths resolve the 5th percentile; 5,000 are needed for the 1st.'],
+  ['Rate floor', `${num(100 * rec.simulation.floor, 2)}% (V4 rerun at ${num(100 * rec.simulation.alt_floor, 2)}% if more than ${num(100 * rec.simulation.floor_trigger, 0)}% of paths touch it)`, 'Truncates the falling-rate tail; SOFR at zero stops reinvestment income.'],
+  ['Interest on the security', 'Balance at the start of the month × net coupon / 12', 'Cash coupon, not accounting yield; no payment delay.'],
+  ['Scheduled principal', 'Level payment at the WAC over the WAM, one loan per CUSIP', 'Dispersion of rates and terms inside a pool is ignored.'],
+  ['Reinvestment', `Prepaid principal at ${reinvLabel()}, from the month after it is received`, M.reinvest_scheduled ? 'All principal is reinvested.' : 'Scheduled principal leaves the book.'],
+  ['Prepayment model', esc(M.prepay_desc), 'Fitted to Fannie Mae factor files (Aug–Sep 2026) and tuned to the sample book; refit before relying on it.'],
+  ['Burnout', Object.entries(M.burnout_source).map(([k, v]) => `${v} ${k === 'file' ? 'from the file' : k === 'estimated' ? 'estimated from rate history' : 'set to zero'}`).join(', '), 'Burnout slows refinancing of seasoned in-the-money pools.'],
+  ['Representative outcomes', `${OUT.paths_per_band} paths per outcome (${OUT.band_pct}% band)`, 'Wider bands smooth the cash flows but blur the percentile.'],
+];
+$('assump').innerHTML = A.map(([a, b, c]) => `<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`).join('');
+
+const LIM = [
+  '<b>Interest income only, not net interest income.</b> No funding cost, hedges, dollar rolls, fees or taxes.',
+  '<b>Cash coupon, not GAAP income.</b> Premium amortization and discount accretion are left out; if reported income includes them, the engine must add them (whitepaper section 8); the rate paths and EaR method are unaffected.',
+  '<b>Stylized reinvestment.</b> Prepaid principal earns 1M SOFR instead of buying new MBS, so reinvested cash carries no prepayment risk of its own.',
+  '<b>Calibration uncertainty.</b> Five-year fan width carries estimation error of roughly 20% (V7) and the named calibrations differ materially (V8); the official figure should be read with that range.',
+  '<b>The rate model\'s own assumptions</b> (constant volatility, Gaussian shocks, a single correlation, an independent mortgage spread, the zero floor, a forward baseline that includes a term premium) are listed with their effects in whitepaper section 12.',
+  '<b>Simplified prepayment model</b>: a pool-level S-curve with a handful of drivers, least tested deep in the money; governed separately from the rate model.',
+  '<b>Representative outcomes are averages of paths</b> near a percentile, not single paths.',
+  '<b>History is a mock-up until real month-end runs accumulate.</b> Mock points use real rates and baselines but today\'s CUSIPs, and the current calibration.',
+  '<b>Data quality is the user\'s responsibility.</b> The model trusts the portfolio file after the range checks in <code>run_model.py validate</code>.',
+];
+$('limitList').innerHTML = LIM.map(l => `<li>${l}</li>`).join('');
+const cls = s => ({PASS: 'pass', WATCH: 'watch', FAIL: 'fail', INFO: 'info'})[s] || '';
+$('checkRows').innerHTML = D.checks.map(c => `<tr><td>${esc(c.check)}</td><td class="${cls(c.status)}">● ${c.status}</td><td>${esc(c.detail)}</td></tr>`).join('');
+if (location.hash) { const t = document.querySelector(location.hash); if (t) t.scrollIntoView(); }
+</script>
+</body></html>

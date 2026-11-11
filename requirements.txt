@@ -1,0 +1,6 @@
+# Tested with Python 3.12 and the versions below; any recent version should work.
+numpy>=1.26        # tested 2.5.4
+pandas>=2.2        # tested 3.1.0 (2.2+ needed for the "ME" month-end alias)
+scipy>=1.11        # tested 1.18.1  (calibration, curve bootstrap)
+pyyaml>=6.0        # tested 6.0.3
+# optional: pytest (python -m pytest tests)

@@ -1,0 +1,23 @@
+# ---------------------------------------------------------------------------
+# MBS income risk (lite) - COMPARISON set-up ("vendor emulation"): everything from model.yaml (portfolio, income,
+# prepayment, risk settings) with its own rate paths, outputs, validation store, run history and dashboard, so the
+# official results are never overwritten. Pair with config/rates_vendor.yaml. See README, "Two approaches".
+# ---------------------------------------------------------------------------
+extends: model.yaml
+
+rates:
+  dir: ../rates_output_vendor          # written by: python run_rates.py --config config/rates_vendor.yaml ...
+
+outputs:
+  dir: ../outputs_vendor
+
+validation:
+  file: ../calibration/income_validation_vendor.json
+
+history:
+  file: ../history/ear_history_vendor.csv
+
+dashboard:
+  dir: ../dashboard_vendor
+  label: Vendor emulation              # header chip; links to the official dashboard
+  compare: {label: Official, dir: ../dashboard}

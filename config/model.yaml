@@ -1,0 +1,63 @@
+# ---------------------------------------------------------------------------
+# MBS income risk (lite) - model configuration, OFFICIAL set-up. Monte Carlo / earnings at risk only.
+# config/model_vendor.yaml is the same with the comparison folders (rates_output_vendor, outputs_vendor, ...).
+# Paths are relative to this file. Rates are in percent unless a key ends in _bp.
+# ---------------------------------------------------------------------------
+
+portfolio:
+  file: ../data/portfolio/sample_portfolio.csv   # one row per CUSIP on one as-of date (see README, "Portfolio file")
+  name: Sample agency MBS portfolio              # shown in the dashboard header and stored in the run history
+  # Banner across the top of every dashboard page; set to "" to remove it.
+  banner: >-
+    Sample data. The sample portfolio is a modelled stand-in built from public Fannie Mae pool disclosures,
+    not actual holdings. Replace it with your own file (see README) before using the results.
+
+rates:
+  dir: ../rates_output          # output folder of run_rates.py (run_record.json, baseline.csv, mc_paths.csv ...)
+  require_matching_as_of: true  # stop if the portfolio date and the rate as-of month differ
+
+horizon_months: 60              # whole years, up to the rate horizon; the dashboard offers each year from 1 to this
+
+income:
+  # Income = interest on the held security + income on reinvested prepaid principal.
+  reinvest_rate_series: SOFR_1M # the designated reinvestment rate: any column of the rate files
+                                # (SOFR_1M, TSY_1M ... TSY_30Y, MTG_30Y)
+  reinvest_spread_bp: 0         # added to the designated rate
+  reinvest_scheduled_principal: false   # false = only prepaid UPB is reinvested; scheduled principal leaves the book
+
+prepay:
+  params_file: prepay_params.yaml
+  multiplier: 1.0               # scales every projected speed (stress lever: 0.75, 1.25 ...)
+  estimate_burnout: true        # if burnout_years is not in the portfolio, estimate it from the mortgage-rate history
+
+risk:
+  outcomes: [5, 10, 25, 50, 75, 90, 95]   # percentiles shown as representative monthly cash flows
+  band_pct: 5                   # each outcome averages the paths ranked within this share of all paths around it
+  tail_pct: 5                   # tail used for expected shortfall and the cohort tail attribution
+  cohort_by: [product, coupon, vintage]   # how the tail attribution groups CUSIPs (any portfolio columns)
+  histogram_bins: 30
+  # Business-decision sensitivities on the Models & assumptions page: EaR 95% re-estimated with each switchable
+  # income decision flipped, on this many of the same paths (common random numbers). 0 = skip.
+  decision_paths: 500
+
+outputs:
+  dir: ../outputs
+  # CUSIP-level monthly detail (balance, scheduled paydown, prepaid UPB, interest, reinvestment) is always written for
+  # the average over all paths ("mean"), plus these outcomes (percentiles of income over cusip_detail_rank_years).
+  cusip_detail_outcomes: [50, 5]
+  cusip_detail_rank_years: 1
+
+validation:
+  # V5 (convergence) and V8 (calibration sensitivity) are run when the calibration changes and stored here, keyed by
+  # calibration id; later runs reuse them. `run_model.py run --revalidate` reruns them.
+  file: ../calibration/income_validation.json
+
+history:
+  file: ../history/ear_history.csv   # every run appends its EaR summary here (one row per horizon)
+  months_shown: 12                   # as-of dates shown in the dashboard's "over time" chart
+
+dashboard:
+  dir: ../dashboard
+  title: MBS Income Risk
+  label: Official               # shown in the header; the comparison set-up's dashboard is linked from it
+  compare: {label: Vendor emulation, dir: ../dashboard_vendor}

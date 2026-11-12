@@ -410,7 +410,7 @@ def _dashboard_data(cfg, pf, rates, prepay, off_ear, tail_ear, outs, tails, chec
                                          "refi_mid", "refi_scale", "refi_ramp_months", "burnout_k", "tuning_multiplier",
                                          "turnover_size_elast", "refi_size_elast", "loan_size_ref")},
             "prepay_product": p["product"], "prepay_story_refi": p["story_refi"],
-            "prepay_multiplier": prepay.multiplier, "prepay_desc": prepay.describe(),
+            "prepay_multiplier": prepay.multiplier, "prepay_desc": prepay.describe(), "prepay_source": p.get("source"),
             "burnout_source": df["burnout_source"].value_counts().to_dict(),
             "reinvest_series": cfg["income"].get("reinvest_rate_series", "SOFR_1M"),
             "reinvest_spread_bp": cfg["income"].get("reinvest_spread_bp", 0),

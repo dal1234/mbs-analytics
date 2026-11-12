@@ -316,12 +316,13 @@ on the Rate model page:
   at its upper bound (flagged).
 - Forwards were biased forecasts: since 1990 the short rate ended on average 65 bp below its 12-month forward and
   2.35 points below its 5-year forward. The fan width excludes that bias (it is the baseline's, assumption A1).
-- Rate scenarios (income model 1.1.0): immediate −100 / +100 bp change 1-year income by −$72m / +$29m (−1.4% /
-  +0.6%; P6 and P85 of the simulated distribution) and 5-year cumulative income by −$1.37bn / +$0.64bn. Worst at
-  1 year: −400 bp, −$1.03bn (−20.4%). Income falls with rates: faster prepayment of a premium book, reinvested at a
-  lower SOFR.
-- V1–V6 pass. V4 triggers (6.7% of paths touch the 0% floor); the −0.5% floor rerun changes EaR by under 1%. V5: the
-  20,000-path benchmark (5-year EaR $4.59bn) lies inside the official run's interval. V3 notes that the simulated
+- Rate scenarios (income model 1.2.0): immediate −100 / +100 bp change 1-year income by −$95m / +$32m (−1.9% /
+  +0.6%; P5 and P85 of the simulated distribution) and 5-year cumulative income by −$1.53bn / +$0.66bn; −200 bp
+  −$372m (−7.3%). Worst at 1 year: −400 bp, −$974m (−19.2%). Income falls with rates: faster prepayment of a premium
+  book, reinvested at a lower SOFR. (Income model 1.1.0: −$72m / +$29m, −200 bp −$261m, −400 bp −$1.03bn.)
+- V1–V6 pass. V4 triggers (6.7% of paths touch the 0% floor); the −0.5% floor rerun leaves 1-year EaR unchanged and
+  raises 5-year EaR by about 2% ($5.22bn against $5.12bn). V5: the 20,000-path benchmark (5-year EaR $5.04bn) lies
+  inside the official run's interval. V3 notes that the simulated
   curve inverts in 31% of path-months against 18% historically (disclosed).
 
 The whitepaper text is at `mbs_lite/templates/whitepaper.html`. Its results blocks and the section 10.2 parameter
@@ -379,8 +380,8 @@ overwrites the other's results or history.
 Why there are two, and how the vendor model was read: the other model's 1M SOFR median tracks its zero-vol path, its
 fan is narrow at 1 year (P5–P95 3.0–5.0% as of July 2026) and much wider at 5 years (about 0.75–7.0%). A fan that
 widens faster than the square root of time is typical of option-implied volatility. A centre that tracks the
-zero-vol path is typical of a risk-neutral model built on a swap curve. On the July 2026 sample, the emulation gave
-1-year EaR of about $62m against $110m official. Almost all of the gap came from the SOFR width; the centre mattered
+zero-vol path is typical of a risk-neutral model built on a swap curve. On the July 2026 sample (income model 1.1.0),
+the emulation gave 1-year EaR of about $62m against $110m official. Almost all of the gap came from the SOFR width; the centre mattered
 little.
 
 ### Run both
@@ -506,7 +507,7 @@ python tools/vols_from_percentiles.py --implied 1:61 --implied 5:85
 ```
 
 Do the same with the 10-year's percentiles or swaption vols for `y10_bp`. The 10-year volatility is the largest
-remaining unknown in the emulation. On the July sample, 70 bp or 110 bp instead of 90 bp moved 1-year EaR from
+remaining unknown in the emulation. On the July sample (income model 1.1.0), 70 bp or 110 bp instead of 90 bp moved 1-year EaR from
 $62m to $52m or $74m. The tool also flags percentiles that are skewed (a lognormal model, or a floor binding), where a
 normal width is only an approximation.
 
@@ -531,8 +532,10 @@ builds up one real point per run; `tools/mock_history.py` mocks only the officia
 - The rate model's assumptions A1–A13 (whitepaper section 12) apply: forward baseline includes a term premium,
   constant and level-independent volatility, Gaussian shocks, one correlation, independent mortgage spread, zero floor.
 - Five-year fan width carries roughly 20% estimation error (V7), and the calibrations differ materially (V8).
-- The prepayment model is a simple S-curve fitted to Aug–Sep 2026 Fannie Mae speeds; it is governed separately and
-  should be refit to your own speeds.
+- The prepayment model is a simple pool-level S-curve (income model 1.2.0, interim): fitted to Fannie Mae factor-file
+  speeds from Jun 2019 to Oct 2025, with a bounded calibration layer on the latest 12 months. Its 30-year refinancing
+  multiplier sits at the 0.80 bound (open finding), and out of time it runs about 15–20% fast just in the money
+  (0 to +1 point). It is governed separately and should be refit to your own speeds.
 - Rate scenarios cover parallel and curve-shape moves only (no historical replays, named combinations,
   realized-volatility or user-drawn paths); curve shapes are immediate and at one size. A scenario says nothing about
   likelihood: read it with its percentile in the Monte Carlo distribution.

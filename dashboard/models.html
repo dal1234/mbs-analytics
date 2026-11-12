@@ -163,7 +163,7 @@ const A = [
   ['Interest on the security', 'Balance at the start of the month × net coupon / 12', 'Cash coupon, not accounting yield; no payment delay.'],
   ['Scheduled principal', 'Level payment at the WAC over the WAM, one loan per CUSIP', 'Dispersion of rates and terms inside a pool is ignored.'],
   ['Reinvestment', `Prepaid principal at ${reinvLabel()}, from the month after it is received`, M.reinvest_scheduled ? 'All principal is reinvested.' : 'Scheduled principal leaves the book.'],
-  ['Prepayment model', esc(M.prepay_desc), 'Fitted to Fannie Mae factor files (Aug–Sep 2026) and tuned to the sample book; refit before relying on it.'],
+  ['Prepayment model', esc(M.prepay_desc), esc(M.prepay_source || 'Fitted to Fannie Mae factor files') + '; refit to your own speeds before relying on it.'],
   ['Burnout', Object.entries(M.burnout_source).map(([k, v]) => `${v} ${k === 'file' ? 'from the file' : k === 'estimated' ? 'estimated from rate history' : 'set to zero'}`).join(', '), 'Burnout slows refinancing of seasoned in-the-money pools.'],
   ['Representative outcomes', `${OUT.paths_per_band} paths per outcome (${OUT.band_pct}% band)`, 'Wider bands smooth the cash flows but blur the percentile.'],
 ];

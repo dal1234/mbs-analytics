@@ -13,36 +13,45 @@
 #   size      = avg_loan_size / loan_size_ref, clipped to [0.2, 5]
 #   burnout_years = time the pool has spent more than 50 bp in the money
 #
-# Values: fitted to Fannie Mae monthly factor files (pool months 202608 and 202609, 435k pool-months),
-# then tuned 1.10x to the speeds of the demo book. refi_max is a prior, not a fit (few pools were deep in the money).
+# Values (interim champion, 2026-11-12): fitted by least squares to Fannie Mae monthly factor files, Jun 2019 to
+# Oct 2025 (20% of 30y/15y pools, 2.7 million pool-months), then a bounded calibration layer (30y/15y refinancing and
+# turnover multipliers, 0.80-1.25x) set on the latest 12 months (Nov 2025 to Oct 2026). The multipliers are already
+# applied in the product rows below (30y: refi 0.80x, turnover 0.82x; 15y: refi 0.99x, turnover 1.12x).
+# Open finding: the 30y refinancing multiplier sits at its 0.80 bound (borrowers today refinance less than the
+# 2019-2025 history implies); the remedy is a re-estimated (loan-level) model, not a wider bound.
+# Out-of-time test of the procedure (base to Dec 2024, calibration on 2025, scored on Jan-Oct 2026): actual / model
+# 0.93 overall, 0.80-0.88 just in the money (0 to +1 point), 0.92-1.01 elsewhere. No tuning to the sample book.
+# Seasonality is a fitted cosine (amplitude 0.16, peak in June) written out as 12 monthly values.
+# Previous values (two factor months, Aug-Sep 2026, tuned 1.10x): package version 1.1.0.
 # Refit these to your own speed history before relying on the results.
-# ---------------------------------------------------------------------------
-turnover_base: 7.014
-lockin_slope: 0.1281
-lockin_floor: 0.3948
-turnover_ramp_months: 48.0
-refi_max: 50.0
-refi_mid: 1.360
-refi_scale: 0.6685
-refi_ramp_months: 2.0
-burnout_k: 0.0814
+source: "Fannie Mae factor-file speeds, Jun 2019 to Oct 2025, with a bounded calibration layer on Nov 2025 to Oct 2026 (interim; 30y refinancing multiplier at its bound)"
+
+turnover_base: 8.114
+lockin_slope: 0.1293
+lockin_floor: 0.409
+turnover_ramp_months: 13.4058
+refi_max: 59.8707
+refi_mid: 0.7115
+refi_scale: 0.3404
+refi_ramp_months: 9.0759
+burnout_k: 0.1662
 loan_size_ref: 300000.0
-turnover_size_elast: -0.1306
-refi_size_elast: 0.2093
-tuning_multiplier: 1.10
+turnover_size_elast: -0.1177
+refi_size_elast: 0.2742
+tuning_multiplier: 1.0
 
 # month-of-year multipliers on turnover (Jan..Dec); normalised to average 1 by the model
-seasonality: [0.80, 0.80, 0.95, 1.05, 1.10, 1.15, 1.15, 1.15, 1.00, 1.00, 0.90, 0.85]
+seasonality: [0.870, 0.934, 1.016, 1.093, 1.146, 1.159, 1.130, 1.066, 0.984, 0.907, 0.854, 0.841]
 
 # product: rate_offset (percent) is added to the 30y mortgage rate to get the rate that product refinances at;
 # turnover / refi are multipliers; involuntary is a constant CPR (buyouts and defaults)
 product:
-  30Y: {rate_offset: 0.00, turnover: 1.000, refi: 1.000, involuntary: 0.484}
+  30Y: {rate_offset: 0.00, turnover: 0.819, refi: 0.800, involuntary: 0.494}
   20Y: {rate_offset: -0.35, turnover: 1.000, refi: 0.900, involuntary: 0.300}
-  15Y: {rate_offset: -0.60, turnover: 1.418, refi: 1.550, involuntary: 0.144}
+  15Y: {rate_offset: -0.77, turnover: 1.233, refi: 0.508, involuntary: 0.153}
   10Y: {rate_offset: -0.70, turnover: 1.100, refi: 0.700, involuntary: 0.000}
 
 # pool story (story_group column): Generic = TBA-deliverable, Spec = specified pool, Geo = geographic story,
 # LLB = low loan balance
 story_turnover: {Generic: 1.0, Spec: 1.0, Geo: 0.9, LLB: 1.0}
-story_refi: {Generic: 1.0, Spec: 0.797, Geo: 0.781, LLB: 0.968}
+story_refi: {Generic: 1.0, Spec: 0.68, Geo: 0.477, LLB: 0.567}

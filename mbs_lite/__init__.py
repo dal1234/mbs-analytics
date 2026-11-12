@@ -2,4 +2,4 @@
 
 Income = interest on the held security + income on reinvested prepaid principal at a designated rate (1M SOFR).
 """
-__version__ = "1.1.0"
+__version__ = "1.2.0"

@@ -79,6 +79,13 @@ def _settings(rates) -> dict:
     return out
 
 
+def prepay_fingerprint(prepay) -> str:
+    """Short hash of the prepayment parameters and multiplier: stored V5/V8 results are reused only for the same model."""
+    import hashlib
+    blob = json.dumps({"p": prepay.p, "m": prepay.multiplier}, sort_keys=True, default=float)
+    return hashlib.sha256(blob.encode()).hexdigest()[:12]
+
+
 def _convergence_pass(conv: list, tested: int, big: int, H: int) -> bool:
     """V5 criterion (revised 2026-11-11): the benchmark (largest run) 5th percentile lies inside the 95% bootstrap
     interval of the tested (official) run, at year 1 and at the full horizon. The earlier rule (tested point inside the
@@ -94,12 +101,15 @@ def _convergence_pass(conv: list, tested: int, big: int, H: int) -> bool:
 
 def cached_or_run(path: str, rates, df, prepay, inc, H, base_proj, official_ear, tail_ear, portfolio_meta: dict,
                   force: bool = False, log=print) -> dict:
-    """V5 and V8 for the calibration in use: stored by calibration id, recomputed only when it changes."""
+    """V5 and V8 for the calibration in use: stored by calibration id, simulation settings and prepayment parameters;
+    recomputed when any of them changes."""
     p = Path(path)
     cid = rates.calibration_meta["calibration_id"]
+    pf = prepay_fingerprint(prepay)
     if p.exists() and not force:
         old = json.loads(p.read_text())
-        if old.get("calibration_id") == cid and old.get("settings") == _settings(rates):
+        if (old.get("calibration_id") == cid and old.get("settings") == _settings(rates)
+                and old.get("prepay_fingerprint") == pf):
             old["reused"] = True
             passed = _convergence_pass(old["convergence"], old["tested_paths"], old["benchmark_paths"], H)
             if passed != old.get("convergence_pass"):          # criterion revised since the results were stored
@@ -136,7 +146,7 @@ def cached_or_run(path: str, rates, df, prepay, inc, H, base_proj, official_ear,
             e = ear(project(df, rates.simulate(calibration=name), rates, prepay, inc, H), base_proj, detail=False, antithetic=anti)
         for r in _ear_rows(e):
             sens.append({"calibration": name, "official": name == rates.calibration_meta["official"], **r})
-    res = {"calibration_id": cid, "settings": _settings(rates), "computed_utc": datetime.now(timezone.utc).isoformat(), "reused": False,
+    res = {"calibration_id": cid, "settings": _settings(rates), "prepay_fingerprint": pf, "computed_utc": datetime.now(timezone.utc).isoformat(), "reused": False,
            "portfolio": portfolio_meta, "convergence": conv, "convergence_pass": all(ok), "tested_paths": tested,
            "benchmark_paths": big, "sensitivity": sens}
     p.parent.mkdir(parents=True, exist_ok=True)

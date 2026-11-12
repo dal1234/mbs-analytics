@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ratemodel import scenarios as scen
 from ratemodel import store
 from ratemodel.model import Calibration, SimConfig, simulate_paths
 
@@ -79,11 +80,40 @@ class RateSet:
             cube[:, 1:, j] = p[k][:, :H] * 100.0
         return (cube, p) if with_dev else cube
 
-    def baseline_cube(self, shift_bp: float = 0.0) -> np.ndarray:
-        """The baseline as one path; ``shift_bp`` moves every rate in months 1..H in parallel (floored)."""
+    def baseline_cube(self) -> np.ndarray:
+        """The baseline as one path."""
+        return self.baseline.copy()[None, :, :]
+
+    def parallel_cube(self, shift_bp: float) -> np.ndarray:
+        """The baseline with an immediate parallel shock as one path (months 1..H): every Treasury tenor and 1M SOFR
+        move ``shift_bp``, the mortgage rate beta x ``shift_bp`` (ratemodel.scenarios), floored like the paths."""
+        d = scen.deviation(self.official, "parallel", shift_bp, shift_bp)
         b = self.baseline.copy()
-        b[1:] = np.maximum(b[1:] + shift_bp / 100.0, self.sim.floor * 100.0)
+        b[1:] = np.maximum(b[1:] + 100.0 * np.array([d[k] for k in KEYS]), self.sim.floor * 100.0)
         return b[None, :, :]
+
+    def scenario_cube(self, spec: dict | None = None) -> tuple[list, np.ndarray]:
+        """Deterministic scenarios (ratemodel.scenarios) in cube layout, one path per scenario: (catalog, cube).
+        Built from the same baseline, calibration and floor as the Monte Carlo; the base row is the baseline exactly."""
+        spot = dict(zip(KEYS, self.full_baseline[0] / 100.0))
+        cat, paths = scen.build(self.baseline_frame(), spot, self.official, spec, self.sim.floor)
+        H = self.horizon
+        cube = np.empty((len(cat), H + 1, len(SERIES)))
+        cube[:, 0, :] = self.full_baseline[0]
+        for i, row in enumerate(cat):
+            cube[i, 1:, :] = paths[row["id"]][list(KEYS)].to_numpy(float)[:H] * 100.0
+            if row["family"] == "base":
+                cube[i] = self.baseline
+        return cat, cube
+
+    def with_mortgage_spread(self, cube: np.ndarray, spread_bp: float, ramp_months: int = 3) -> np.ndarray:
+        """Overlay: the 30Y mortgage rate + ``spread_bp`` in months 1..H, phased in over ``ramp_months``; Treasuries
+        and SOFR unchanged. Moves prepayment speeds only (the engine reinvests at the designated rate)."""
+        if not spread_bp:
+            return cube
+        out = cube.copy()
+        out[:, 1:, self.col("MTG_30Y")] += spread_bp / 100.0 * scen.timing(cube.shape[1] - 1, ramp_months)
+        return out
 
 
 def load_rates(rates_dir: str, horizon: int) -> RateSet:

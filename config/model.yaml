@@ -40,6 +40,27 @@ risk:
   # income decision flipped, on this many of the same paths (common random numbers). 0 = skip.
   decision_paths: 500
 
+scenarios:
+  # Rate-specific (deterministic) scenarios on the dashboard's "Rate specific" tab and in outputs/scenario_*.csv.
+  # Built by ratemodel/scenarios.py from the same baseline, calibration and floor as the Monte Carlo (whitepaper 13.4):
+  # parallel = every Treasury tenor and 1M SOFR move the shock, the mortgage rate beta x the shock;
+  # shape = the two model factors move (short_bp on 1M SOFR, long_bp on the 10-year), other tenors follow their
+  # calibrated loadings, the mortgage rate beta x long_bp. Reporting views: changing them is not a model change.
+  parallel_bp: [100, 200, 300, 400]   # each up and down, immediate and ramped
+  ramp_months: 12                     # ramped parallel shocks reach full size here, then hold (0 = immediate only)
+  include_flat: true                  # reference row: today's rates held
+  shapes:
+    - {id: BULL_STEEP, name: Bull steepener, short_bp: -200, long_bp: -50}
+    - {id: BULL_FLAT, name: Bull flattener, short_bp: -50, long_bp: -200}
+    - {id: BEAR_STEEP, name: Bear steepener, short_bp: 50, long_bp: 200}
+    - {id: BEAR_FLAT, name: Bear flattener, short_bp: 200, long_bp: 50}
+    - {id: TWIST_STEEP, name: Twist steepener, short_bp: -100, long_bp: 100}
+    - {id: TWIST_FLAT, name: Twist flattener, short_bp: 100, long_bp: -100}
+  overlays:                           # each combination re-runs every scenario; the dashboard grid switches to it
+    spread_bp: [-50, -25, 0, 25, 50]  # 30Y mortgage rate only (Treasuries, SOFR unchanged), phased in over:
+    spread_ramp_months: 3
+    prepay_mult: [0.75, 1.0, 1.25]    # on top of prepay.multiplier
+
 outputs:
   dir: ../outputs
   # CUSIP-level monthly detail (balance, scheduled paydown, prepaid UPB, interest, reinvestment) is always written for

@@ -33,9 +33,14 @@
  <div class="formula" id="incomeFormula"></div>
  <div class="explain" id="incomeText"></div></div>
 
-<div class="card" id="riskCard"><h2>4 · Risk measures</h2><div class="sub">What the Earnings at risk page reports (whitepaper section 8)</div>
+<div class="card" id="riskCard"><h2>4 · Risk measures</h2><div class="sub">What the Earnings at risk view reports (whitepaper section 8)</div>
  <div class="formula" id="riskFormula"></div>
  <div class="explain" id="riskText"></div></div>
+
+<div class="card" id="scenCard"><h2>5 · Rate scenarios</h2><div class="sub">What the Rate specific view reports (whitepaper section 13.4) · <code>ratemodel/scenarios.py</code>, <code>mbs_lite/scenarios.py</code></div>
+ <div class="formula" id="scenFormula"></div>
+ <div class="explain" id="scenText"></div>
+ <div style="overflow-x:auto"><table class="g"><thead><tr><th>Scenario</th><th>Family</th><th>Short rate (1M SOFR)</th><th>10Y</th><th>30Y mortgage</th><th>Timing</th><th>Definition</th></tr></thead><tbody id="scenDefs"></tbody></table></div></div>
 
 <div class="card" id="assumpCard"><h2>Assumptions in this run</h2><div class="sub">From <code>config/model.yaml</code>, <code>config/prepay_params.yaml</code>, <code>config/rates.yaml</code> and the stored calibration</div>
  <table class="g wrapall"><thead><tr><th style="width:22%">Assumption</th><th style="width:28%">Setting</th><th>Why it matters</th></tr></thead><tbody id="assump"></tbody></table></div>
@@ -172,10 +177,27 @@ const LIM = [
   '<b>The rate model\'s own assumptions</b> (constant volatility, Gaussian shocks, a single correlation, an independent mortgage spread, the zero floor, a forward baseline that includes a term premium) are listed with their effects in whitepaper section 12.',
   '<b>Simplified prepayment model</b>: a pool-level S-curve with a handful of drivers, least tested deep in the money; governed separately from the rate model.',
   '<b>Representative outcomes are averages of paths</b> near a percentile, not single paths.',
+  '<b>Rate scenarios cover parallel and curve-shape moves only.</b> No historical replays (2013, 2020, 2022), named combined scenarios, realized-volatility paths or user-drawn paths; curve shapes are immediate and at one size. The spread and prepayment overlays apply to the Rate specific view, not to EaR.',
+  '<b>A rate scenario says nothing about likelihood.</b> Its percentile in the Monte Carlo distribution is shown beside it; immediate shocks sit deep in the tail at short horizons (whitepaper 11, note on V6).',
   '<b>History is a mock-up until real month-end runs accumulate.</b> Mock points use real rates and baselines but today\'s CUSIPs, and the current calibration.',
   '<b>Data quality is the user\'s responsibility.</b> The model trusts the portfolio file after the range checks in <code>run_model.py validate</code>.',
 ];
 $('limitList').innerHTML = LIM.map(l => `<li>${l}</li>`).join('');
+
+// rate scenarios (Rate specific view)
+{ const S = D.rate_specific;
+  if (!S) { $('scenCard').hidden = true; }
+  else { const b = num(S.beta_mort, 3), sg = v => v == null ? '—' : (v > 0 ? '+' : v < 0 ? MINUS : '') + Math.abs(v);
+    const ld = S.loadings || {};
+    $('scenFormula').textContent = `rate(t) = max( baseline(t) + d × w(t), floor )        w(t) = 1, or min(1, t / ramp) for ramped shocks\n`
+      + `parallel ±X   every Treasury tenor and 1M SOFR: d = X        30Y mortgage: d = β X        β = ${b}\n`
+      + `shape (S, L)  1M SOFR: d = S   10Y: d = L   1/2/5/30Y: d = aS·S + aL·L   30Y mortgage: d = β L\n`
+      + `loadings (aS, aL): ` + Object.entries(ld).map(([k, v]) => `${k} (${num(v[0], 2)}, ${num(v[1], 2)})`).join('  ');
+    $('scenText').innerHTML = `<p>Each scenario is the Monte Carlo baseline plus a <b>fixed</b> deviation instead of a random one, with the official calibration and floor, and runs through the same income engine. The <b>base</b> scenario is the baseline itself, so its income is the EaR baseline income and both views share one reference. The mortgage rate follows the calibrated pass-through β of the 10-year (the mortgage spread deviation is zero), so a +100 bp parallel shock moves the mortgage rate ${num(100 * S.beta_mort, 0)} bp.</p>`
+      + `<p><b>Attribution</b> moves one rate at a time from the base path: the scenario mortgage rate alone gives the prepayment effect (coupon lost, and the extra prepaid principal reinvested at the base rate); the scenario reinvestment rate alone gives the rate effect on the base balances; the rest is the interaction. <b>Overlays</b> re-run every scenario with a mortgage spread (${S.overlays.spread_bp.map(sg).join(', ')} bp, phased in over ${S.overlays.spread_ramp_months} months) and a prepayment multiplier (${S.overlays.prepay_mult.map(m => num(m, 2) + '×').join(', ')}). Scenario sizes and shapes are set in <code>config/model.yaml</code> (<code>scenarios</code>); they are views, not model settings (whitepaper 13.2).</p>`;
+    const fam = {base: 'Base', reference: 'Reference', parallel: 'Parallel', parallel_ramp: 'Parallel, ramped', shape: 'Curve shape'};
+    $('scenDefs').innerHTML = S.catalog.map(c => { const par = c.family.startsWith('parallel'), L = c.long_bp;
+      return `<tr${c.family === 'base' ? ' class="base"' : ''}><td>${esc(c.name)}</td><td>${fam[c.family] || c.family}</td><td>${sg(c.short_bp)}</td><td>${sg(L)}</td><td>${L == null ? '—' : sg(Math.round(S.beta_mort * L))}</td><td>${c.ramp ? `linear over ${c.ramp} months` : c.family === 'base' || c.family === 'reference' ? '—' : 'from month 1'}</td><td style="white-space:normal;text-align:left">${esc(c.desc)}</td></tr>`; }).join(''); } }
 const cls = s => ({PASS: 'pass', WATCH: 'watch', FAIL: 'fail', INFO: 'info'})[s] || '';
 $('checkRows').innerHTML = D.checks.map(c => `<tr><td>${esc(c.check)}</td><td class="${cls(c.status)}">● ${c.status}</td><td>${esc(c.detail)}</td></tr>`).join('');
 if (location.hash) { const t = document.querySelector(location.hash); if (t) t.scrollIntoView(); }

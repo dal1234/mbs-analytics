@@ -2,9 +2,12 @@
 
 Projects **interest income** for a portfolio of agency MBS CUSIPs on a **baseline** rate path and on **Monte Carlo
 rate paths** around it, and reports **Earnings at Risk (EaR)**: baseline income minus the 5th percentile of simulated
-income, for years 1 to 5, cumulative and annual. The rate model is a real-world, baseline-centred, two-factor Gaussian
-model calibrated to public history. Its methodology, decisions, validation and governance are in the whitepaper,
-which the dashboard shows as the **Rate model** page, filled with the results of each run.
+income, for years 1 to 5, cumulative and annual. It also runs **deterministic rate scenarios** (parallel shocks and
+curve shapes built from the same baseline and calibration) through the same engine, with attribution, overlays and
+cohorts, so a named rate move and the Monte Carlo distribution share one baseline. The rate model is a real-world,
+baseline-centred, two-factor Gaussian model calibrated to public history. Its methodology, decisions, validation and
+governance are in the whitepaper, which the dashboard shows as the **Rate model** page, filled with the results of each
+run.
 
 For each CUSIP, each path (and the baseline) and each month the model computes:
 
@@ -22,8 +25,8 @@ EaR 95%        = baseline income - 5th percentile of simulated income, per horiz
 | Piece | What it does | Entry point |
 |---|---|---|
 | Rate model (`ratemodel/`) | Calibration (stored, refitted annually or on demand), baseline (forward / flat / house view), simulation, rate validation V1–V4 and V7 | `run_rates.py` |
-| Income model (`mbs_lite/`) | Portfolio validation, prepayment model, cash flows, EaR with bootstrap intervals, validation V4–V6 and V8, run history | `run_model.py` |
-| Dashboard (`dashboard/`) | **Earnings at risk** (KPIs, rate fan and income distribution, then tabs: cash flows by outcome, rates and speeds, baseline by month, EaR by horizon, EaR over time, tail attribution; a tab can be linked as `index.html#bl` etc.), **Portfolio**, **Models & assumptions**, **Rate model** (the whitepaper with this run's results) | open `dashboard/index.html` |
+| Income model (`mbs_lite/`) | Portfolio validation, prepayment model, cash flows, EaR with bootstrap intervals, deterministic rate scenarios (section 5a), validation V4–V6 and V8, run history | `run_model.py` |
+| Dashboard (`dashboard/`) | **Income risk**: one KPI row (portfolio, baseline income, EaR 95%, P5, worst and best rate scenario, ±100 bp, calibration range) for the horizon chosen in the bar, then two views. **Rate specific** (`index.html#rate`): rate paths and curve shapes, the income sensitivity grid with spread and prepayment overlays, why income moves (monthly income, income by scenario, drivers, attribution), cash flows (balances and rates, by year, waterfall) and cohorts, all following the scenario you pick. **Earnings at risk** (`index.html#ear`): rate fan and income distribution (with the ±100/±200 bp shocks marked), then tabs: cash flows by outcome, rates and speeds, baseline by month, EaR by horizon, EaR over time, tail attribution (a tab can be linked as `index.html#bl` etc.). Also **Portfolio**, **Models & assumptions**, **Rate model** (the whitepaper with this run's results) | open `dashboard/index.html` |
 | Two approaches (section 7a) | **Official**: Treasury forward baseline + historical volatility (the validated model). **Vendor emulation**: SOFR swap forward baseline + market-implied volatility, our reading of a risk-neutral vendor model, for comparison. Each has its own config, outputs and dashboard; the dashboards link to each other | `config/*_vendor.yaml` |
 | Tools (`tools/`) | `mock_history.py` (mock-up of 12 months of history), `estimator_study.py` (reproduces whitepaper table 6.1), `vols_from_percentiles.py` (market volatility inputs from another model's percentiles or quoted implied vols), `compare_runs.py` (official vs vendor emulation, side by side) | |
 
@@ -193,6 +196,10 @@ plenty.
 | `validation.file` | `../calibration/income_validation.json` | Stored V5/V8 results, keyed by calibration id |
 | `history.file` | `../history/ear_history.csv` | Run history appended by every run |
 | `risk.decision_paths` | 500 | Paths for the business-decision sensitivities on the Models & assumptions page (0 = skip) |
+| `scenarios.parallel_bp`, `.ramp_months` | `[100, 200, 300, 400]`, 12 | Parallel shocks, each up and down, immediate and ramped (0 = immediate only) |
+| `scenarios.shapes` | 6 shapes | `{id, name, short_bp, long_bp}`: 1M SOFR and 10-year moves of each curve shape |
+| `scenarios.include_flat` | `true` | Reference row with today's rates held |
+| `scenarios.overlays` | spread −50…+50 bp, prepay 0.75/1.00/1.25× | Combinations re-run on every scenario for the grid's overlay buttons |
 
 `config/rates.yaml` (rate model): data cache, calibration file, baseline (`baseline.type`: forward, swap, flat or file,
 plus `baseline.swap` for the swap curve) and volatility (`volatility.type`: historical or market, plus
@@ -216,6 +223,9 @@ paths, V5 convergence counts 1,000 / 5,000 / 20,000, antithetic, moment matching
 | `cusip_monthly_baseline.csv`, `_mean.csv`, `_P50.csv`, `_P05.csv` | CUSIP × month: balance, scheduled paydown, prepaid UPB, interest, reinvestment, income, CPR (baseline path, all-path average, median and P5 outcomes) |
 | `cohort_tail.csv` | Per measure, year and cohort: baseline vs tail income and CPR, contribution to the tail shortfall |
 | `holdings_projected.csv` | The validated portfolio plus burnout, projected WAL, baseline and mean year-1 income and CPR |
+| `scenario_income.csv` | Rate scenarios: per scenario and year, income, coupon, reinvestment, principal, balances, CPR, change vs base (annual and cumulative), percentile in the Monte Carlo distribution |
+| `scenario_monthly.csv`, `scenario_rates.csv` | Rate scenarios month by month: income lines, balances, CPR, reinvestment rate; the seven rate series of each scenario path |
+| `scenario_attribution.csv`, `scenario_overlays.csv` | Change vs base split into prepayment (coupon, reinvested principal), reinvestment rate and interaction; income and CPR under each overlay |
 | `validation_v5_convergence.csv`, `_v6_shocks.csv`, `_v8_calibrations.csv`, (`_v4_floor_rerun.csv`) | Income-dependent validation |
 | `checks.csv` | The run's checks |
 
@@ -239,6 +249,30 @@ paths, percent), `history_monthly.csv`, `rate_validation.json`. `calibration/` (
   coupon + reinvestment = income month by month. They are shown with the baseline path and their difference from it.
 - **Tail attribution**: each cohort's average income in the worst 5% of paths minus its baseline income. These add up
   to the tail's shortfall against the baseline.
+
+## 5a. Rate scenarios (whitepaper section 13.4)
+
+Deterministic scenarios are built by `ratemodel/scenarios.py` the way a Monte Carlo path is (baseline + deviation),
+with a fixed deviation, the official calibration and the floor, and run through the same engine
+(`mbs_lite/scenarios.py`, about one second):
+
+```
+parallel ±X    every Treasury tenor and 1M SOFR + X; 30Y mortgage + β X (β = 0.91, the calibrated pass-through)
+               immediate (month 1 on) or ramped linearly over 12 months, then held
+shape (S, L)   1M SOFR + S, 10Y + L, 1/2/5/30Y on their factor loadings, mortgage + β L    (immediate)
+base           the baseline itself = the EaR baseline; flat = today's rates held (reference)
+```
+
+- The base row is the EaR baseline exactly (a run check), so the grid, the KPI row and EaR share one reference. Each
+  scenario's percentile in the Monte Carlo distribution of the same horizon is shown beside it.
+- **Attribution** (exact): the scenario mortgage rate alone (coupon lost to prepayment, prepaid principal reinvested
+  at the base rate), the scenario reinvestment rate alone, and the interaction.
+- **Overlays**: a mortgage spread (mortgage rate only, phased in over 3 months) and a prepayment multiplier re-run every
+  scenario; they change the grid only, never EaR.
+- V6 uses the immediate ±100/±200 bp scenarios. Up to income model 1.0.0 it moved every rate, the mortgage rate
+  included, by the full shock.
+- Scenarios are views, not model settings: change them in `config/model.yaml` (`scenarios`) without revalidation.
+  Not covered: historical replays, named combined scenarios, realized-volatility and user-drawn paths.
 
 ---
 
@@ -267,7 +301,7 @@ width changes only through a governed recalibration. The two alternatives show t
 | V1 centring, V2 dispersion (short rate, 10-year and mortgage fans vs the stored forward-deviation targets), V3 co-movement, V4 floor incidence | `run_rates.py` | every run |
 | V4 rerun at a −0.50% floor (if more than 5% of paths touch the floor) | `run_model.py` | every run, when triggered |
 | V5 convergence (1,000 / 5,000 / 20,000 paths; passes when the 20,000-path result lies inside the official run's interval), V8 calibration sensitivity | `run_model.py` | once per calibration and simulation settings (stored; `--revalidate` to rerun) |
-| V6 benchmark parallel shocks | `run_model.py` | every run |
+| V6 benchmark parallel shocks (the ±100/±200 bp rate scenarios, mortgage rate β × the shock) | `run_model.py` | every run |
 | V7 parameter uncertainty (200 refits) | `run_rates.py --recalibrate` | once per calibration |
 
 **Current results** (sample portfolio, model 1.2.0, 5,000 official paths, calibration through 2026-09), shown in full
@@ -282,6 +316,10 @@ on the Rate model page:
   at its upper bound (flagged).
 - Forwards were biased forecasts: since 1990 the short rate ended on average 65 bp below its 12-month forward and
   2.35 points below its 5-year forward. The fan width excludes that bias (it is the baseline's, assumption A1).
+- Rate scenarios (income model 1.1.0): immediate −100 / +100 bp change 1-year income by −$72m / +$29m (−1.4% /
+  +0.6%; P6 and P85 of the simulated distribution) and 5-year cumulative income by −$1.37bn / +$0.64bn. Worst at
+  1 year: −400 bp, −$1.03bn (−20.4%). Income falls with rates: faster prepayment of a premium book, reinvested at a
+  lower SOFR.
 - V1–V6 pass. V4 triggers (6.7% of paths touch the 0% floor); the −0.5% floor rerun changes EaR by under 1%. V5: the
   20,000-path benchmark (5-year EaR $4.59bn) lies inside the official run's interval. V3 notes that the simulated
   curve inverts in 31% of path-months against 18% historically (disclosed).
@@ -495,6 +533,9 @@ builds up one real point per run; `tools/mock_history.py` mocks only the officia
 - Five-year fan width carries roughly 20% estimation error (V7), and the calibrations differ materially (V8).
 - The prepayment model is a simple S-curve fitted to Aug–Sep 2026 Fannie Mae speeds; it is governed separately and
   should be refit to your own speeds.
+- Rate scenarios cover parallel and curve-shape moves only (no historical replays, named combinations,
+  realized-volatility or user-drawn paths); curve shapes are immediate and at one size. A scenario says nothing about
+  likelihood: read it with its percentile in the Monte Carlo distribution.
 
 ## 9. Troubleshooting
 
@@ -521,9 +562,9 @@ config/
   model.yaml              income model, risk settings, validation cache, history (official)
   model_vendor.yaml       vendor emulation: extends model.yaml (own rates/outputs/validation/history/dashboard folders)
   prepay_params.yaml      prepayment model parameters
-ratemodel/                rate model: data.py, forwards.py, model.py, curve.py, baseline.py, store.py
-mbs_lite/                 portfolio, prepayment, engine, risk, validation (V4-V6, V8), history, dashboard writer
-  templates/              dashboard pages, incl. whitepaper.html + whitepaper.js (Rate model page)
+ratemodel/                rate model: data.py, forwards.py, model.py, curve.py, baseline.py, scenarios.py, store.py
+mbs_lite/                 portfolio, prepayment, engine, risk, scenarios, validation (V4-V6, V8), history, dashboard writer
+  templates/              dashboard pages, incl. scenarios.js (Rate specific view), whitepaper.html + whitepaper.js
 calibration/              calibration.json (in use), archive/, income_validation.json (V5/V8)
 data/fred/                rate history cache (FRED format)
 data/portfolio/           sample_portfolio.csv

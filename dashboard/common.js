@@ -34,8 +34,8 @@ function setupChip(){ const s = (D.meta || {}).setup; if (!s) return '';
 function header(page){
   const k = D.kpi, m = D.meta, c = D.checks || [];
   const n = s => c.filter(x => x.status === s).length, worst = n('FAIL') ? 'r' : n('WATCH') ? 'a' : 'g';
-  const pages = [['index.html', 'Earnings at risk'], ['portfolio.html', 'Portfolio'], ['models.html', 'Models &amp; assumptions'], ['whitepaper.html', 'Rate model']];
-  const sub = `${esc(m.portfolio_name)} · ${k.positions.toLocaleString('en-US')} CUSIPs · ${k.mc_paths.toLocaleString('en-US')} Monte Carlo paths · EaR vs baseline, 1–${m.years} years`;
+  const pages = [['index.html', 'Income risk'], ['portfolio.html', 'Portfolio'], ['models.html', 'Models &amp; assumptions'], ['whitepaper.html', 'Rate model']];
+  const sub = `${esc(m.portfolio_name)} · ${k.positions.toLocaleString('en-US')} CUSIPs · rate scenarios and ${k.mc_paths.toLocaleString('en-US')} Monte Carlo paths · vs baseline, 1–${m.years} years`;
   document.title = `${m.title} — ${pages.find(p => p[0] === page)[1].replace('&amp;', '&')}`;
   $('top').innerHTML = (m.banner ? `<div class="banner" role="note"><span class="ic" aria-hidden="true">!</span><div>${esc(m.banner)}</div></div>` : '')
     + `<div class="hdr"><div class="hl"><h1>${esc(m.title)}${setupChip()}</h1><div class="sub" title="${sub}">${sub}</div></div>`

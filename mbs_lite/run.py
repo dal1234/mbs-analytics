@@ -13,6 +13,7 @@ import pandas as pd
 
 from . import __version__
 from . import history as hist
+from . import scenarios as scen
 from . import validation as val
 from .engine import cpr_from, project
 from .portfolio import load_portfolio
@@ -96,6 +97,9 @@ def run(cfg: dict, log=print, write_outputs: bool = True, write_dashboard: bool 
     tails = tail_attribution(df, codes, labels, off, base, float(rk.get("tail_pct", 5)))
     decisions = _decisions(df, rates, prepay, inc, H, int(rk.get("decision_paths", 500)), anti, log)
 
+    rs = scen.run(df, rates, prepay, inc, H, cfg.get("scenarios") or {}, codes, labels, off.agg["income"], log)
+    rs["cohorts"]["by"] = list(rk.get("cohort_by", ["product", "coupon", "vintage"]))
+
     v4 = val.floor_rerun(df, rates, prepay, inc, H, base, off_ear)
     v6 = val.shocks(df, rates, prepay, inc, H, off, base)
     v58 = None
@@ -133,16 +137,21 @@ def run(cfg: dict, log=print, write_outputs: bool = True, write_dashboard: bool 
             idx = band(v, float(q), float(rk.get("band_pct", 5)))
             details[f"P{int(q):02d}"] = project(df, rates.mc[idx], rates, prepay, inc, H, mean_detail=True).detail
     checks = _checks(pf, rates, off, details, outs, tails, inc, v4, v6, v58)
+    checks[-1:-1] = _scenario_checks(rs, base)
     if write_outputs:
         out = Path(cfg["outputs"]["dir"])
         out.mkdir(parents=True, exist_ok=True)
         files = _write_outputs(out, df, rates, off, details, off_ear, tail_ear, outs, tails, checks, v4, v6, v58)
+        for name, frame in scen.frames(rs, rates).items():
+            frame.to_csv(out / name, index=False, float_format="%.6f")
+            files.append(name)
         log(f"Wrote {len(files)} files to {out}")
     data = None
     if write_dashboard:
         data = _dashboard_data(cfg, pf, rates, prepay, off_ear, tail_ear, outs, tails, checks, port_wal, run_at,
                                base, v4, v6, v58)
         data["decisions"] = decisions
+        data["rate_specific"] = scen.public(rs)
         dash = _write_dashboard(cfg, data)
         log(f"Dashboard  {dash / 'index.html'}  ({time.time() - t0:.1f}s)")
     for c in checks:
@@ -246,6 +255,22 @@ def _checks(pf, rates, off, details, outs, tails, inc, v4, v6, v58) -> list:
     add("V6 benchmark shocks", "PASS" if v6["pass"] else "WATCH",
         "direction of the parallel-shock results agrees with the simulated paths" if v6["pass"]
         else "parallel shocks and simulated paths disagree on the direction of income")
+    return out
+
+
+def _scenario_checks(rs, base) -> list:
+    """Rate-specific scenarios: the base row is the EaR baseline, and the attribution adds up."""
+    out = []
+    b = rs["_proj"].agg["income"][[c["id"] for c in rs["catalog"]].index(rs["base_id"])]
+    err = float(np.abs(b - base.agg["income"][0]).max())
+    out.append({"check": "Rate-specific base = EaR baseline", "status": "PASS" if err < 0.01 else "FAIL",
+                "detail": f"income on the base scenario equals baseline income month by month (max difference ${err:,.2f})"})
+    an = rs["annual"]
+    aerr = max([abs(sum(p[k][y] for k in p) - (an[sid]["income"][y] - an[rs["base_id"]]["income"][y]))
+                for sid, p in rs["attribution"].items() for y in range(rs["years"])] or [0.0])
+    out.append({"check": "Scenario attribution adds up", "status": "PASS" if aerr < 5.0 else "FAIL",
+                "detail": f"prepayment, reinvestment-rate and interaction parts sum to each scenario's change vs base "
+                          f"in every year (max difference ${aerr:,.0f}, rounding)"})
     return out
 
 

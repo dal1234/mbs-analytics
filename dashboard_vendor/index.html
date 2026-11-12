@@ -1,17 +1,68 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MBS Income Risk — Earnings at risk</title>
+<title>MBS Income Risk</title>
 <link rel="stylesheet" href="styles.css">
 <script src="data.js"></script>
 <script src="common.js"></script>
+<script src="scenarios.js"></script>
 </head><body>
 <div id="top"></div>
 <script>if (window.DATA) header('index.html');</script>
 <div class="subnav"><div class="in"><span class="lbl">Horizon</span><div class="grp" id="hzBtns" role="group" aria-label="Income horizon"></div>
- <span class="lbl" style="margin-left:8px">Income</span><div class="grp" id="msBtns" role="group" aria-label="Cumulative or annual income"></div><span class="hint" id="hzHint"></span></div></div>
+ <span class="lbl" style="margin-left:8px">Income</span><div class="grp" id="msBtns" role="group" aria-label="Cumulative or annual income"></div><span class="grp" id="folGrp" hidden><span class="lbl" style="margin-left:8px">Following</span><select id="followSel" aria-label="Scenario to follow" onchange="FOCUS=null;setFocus(this.value||null)"></select></span><span class="hint" id="hzHint"></span></div></div>
 <div class="wrap">
 <div class="kpis" id="kpis"></div>
 <div id="setupNote" hidden></div>
+<div class="vtabs" role="tablist" aria-label="Views" id="viewBar">
+ <button type="button" role="tab" class="vtab" id="vt-rate" data-view="rate" aria-controls="view-rate" aria-selected="false" tabindex="-1">Rate specific<span class="vs">deterministic scenarios on the same engine</span></button>
+ <button type="button" role="tab" class="vtab" id="vt-ear" data-view="ear" aria-controls="view-ear" aria-selected="false" tabindex="-1">Earnings at risk<span class="vs" id="vtEarSub">Monte Carlo</span></button>
+</div>
+
+<div class="view" id="view-rate" role="tabpanel" aria-labelledby="vt-rate" hidden>
+<div class="infonote" id="focusLine"></div>
+<div class="row rowg">
+ <div class="card stackc" id="rateCard"><div><h2 id="rateTitle">Rate paths<i class="i" tabindex="0" data-tip="Deterministic scenarios from ratemodel/scenarios.py: the Monte Carlo baseline plus a fixed shock instead of a random one, with the same calibration (mortgage beta, tenor loadings) and floor. The base scenario is the EaR baseline itself.">i</i></h2><div class="sub sub2" id="rateSub"></div></div>
+  <div class="grp"><div class="lbl" style="width:90px">Scenarios</div><div class="grp" id="rateFams" role="group" aria-label="Scenario family"></div><div class="grp" id="rateTiming" role="group" aria-label="Parallel shock timing"></div></div>
+  <div class="grp" id="rateTenLbl"><div class="lbl" style="width:90px">Rate shown</div><div class="grp" id="rateTenors" role="group" aria-label="Rate to display"></div></div>
+  <div id="rateChart"></div>
+  <div class="note" id="rateNote"></div></div>
+ <div class="card stackc" id="gridCard"><div><h2>Income sensitivity grid<i class="i" tabindex="0" data-tip="Income by year for every scenario, the total over the selected horizon and its change against the base. The base is the EaR baseline, so this grid and the EaR view share one reference. Overlays re-run every scenario with a mortgage spread and a prepayment multiplier.">i</i></h2><div class="sub sub2" id="gridSub"></div></div>
+  <div class="ovs" id="overlays"></div>
+  <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:12px" id="ovBase"></span><span class="grp"><button type="button" class="dl" id="gridAll" onclick="CALL=!CALL;renderRate()"></button><button type="button" class="dl" onclick="gridCsv()">Download CSV</button></span></div>
+  <div style="overflow-x:auto"><table class="g"><thead id="gridHead"></thead><tbody id="grid"></tbody></table></div></div>
+</div>
+
+<div class="divider">Why income moves</div>
+<div class="card stackc" id="tsCard"><div><h2 id="tsTitle">Monthly income<i class="i" tabindex="0" data-tip="Income each month on the scenario you follow (the base when none): coupon on the held CUSIPs and income on reinvested prepaid principal. The line is total income; the dashed line is the base.">i</i></h2><div class="sub" id="tsSub"></div></div>
+ <div id="tsChart"></div><div class="legend" id="tsLegend"></div><div class="tiles" id="tsTiles"></div></div>
+<div class="row">
+ <div class="card stackc" id="stackCard"><div><h2>Income by scenario<i class="i" tabindex="0" data-tip="Coupon and reinvestment income over the selected horizon in each scenario, on one scale.">i</i></h2><div class="sub" id="stackSub"></div></div>
+  <div class="legend"><span><span class="sw" style="background:#1F4E8C"></span>Coupon</span><span><span class="sw" style="background:#8FB0DC"></span>Reinvestment</span><span style="margin-left:auto;color:#5B6572">Income · Δ vs base, $m</span></div>
+  <div id="stack" style="display:flex;flex-direction:column;gap:4px"></div></div>
+ <div class="card stackc" id="driversCard"><div><h2>Drivers — prepayment speed and reinvestment rate<i class="i" tabindex="0" data-tip="The two channels through which rates move income in this engine: prepayment speed (from the mortgage rate) and the rate earned on reinvested principal.">i</i></h2><div class="sub" id="driversSub"></div></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px"><div id="chartCpr"></div><div id="chartReinv"></div></div></div>
+</div>
+<div class="card stackc" id="atCard"><div><h2 id="atTitle">Why income moves<i class="i" tabindex="0" data-tip="Each scenario's change against the base, split by moving one rate at a time: the scenario mortgage rate alone (prepayments: coupon lost and extra principal reinvested at the base rate), the scenario reinvestment rate alone, and the interaction (changed prepayments reinvested at the changed rate). The parts add up exactly.">i</i></h2><div class="sub">$m · follows the scenario you pick (default: the worst at this horizon) · the parts add up to the total</div></div>
+ <div id="atBars"></div>
+ <details><summary class="lbl" style="cursor:pointer">All scenarios</summary><div style="overflow-x:auto"><table class="g" style="margin-top:8px"><thead id="atHead"></thead><tbody id="atTable"></tbody></table></div></details></div>
+
+<div class="divider">Cash flows</div>
+<div class="card stackc" id="cashCard"><div><h2 id="cashTitle">Balances and rates<i class="i" tabindex="0" data-tip="The scenario you follow (the base when none), month by month: MBS balance, the reinvested balance, and the two rates that drive income.">i</i></h2><div class="sub" id="cashSub"></div></div>
+ <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));gap:16px"><div><div class="lbl">Balances, $bn</div><div id="chartUpb"></div></div><div><div class="lbl">Rates, %</div><div id="chartRates"></div></div></div>
+ <div class="legend" id="cashLegend"></div></div>
+<div class="row">
+ <div class="card stackc" id="byyearCard"><div><h2 id="byyearTitle">By year<i class="i" tabindex="0" data-tip="The scenario you follow, year by year. Rows in the selected horizon are shaded.">i</i></h2><div class="sub">$m · balances at the start and end of each year</div></div>
+  <div style="overflow-x:auto"><table class="g"><thead><tr><th>Year</th><th>Begin UPB</th><th>End UPB</th><th>Sched</th><th>Prepaid</th><th>CPR</th><th>Coupon</th><th>Reinvest</th><th>Income</th><th>Cum.</th><th>Δ vs base</th></tr></thead><tbody id="byyear"></tbody></table></div></div>
+ <div class="card stackc" id="wfCard"><div><h2 id="wfTitle">Cash flows<i class="i" tabindex="0" data-tip="Where the cash goes over the selected horizon, base against the scenario you follow (default: the worst). Coupon and reinvestment income are income; prepaid principal is reinvested; scheduled principal leaves the book.">i</i></h2><div class="sub">$m · the selected horizon</div></div>
+  <div style="overflow-x:auto"><table class="g"><thead><tr><th>Line</th><th>Base</th><th id="wfS">Scenario</th><th>Δ</th></tr></thead><tbody id="waterfall"></tbody></table></div></div>
+</div>
+<div class="card stackc" id="cohortCard"><div><h2 id="cohortTitle">Cohorts<i class="i" tabindex="0" data-tip="Income change against the base by cohort for the scenario you follow (default: the worst). The cohort differences add up to the scenario's change.">i</i></h2><div class="sub" id="cohortSub"></div></div>
+ <div class="grp"><button type="button" class="dl" id="cohortAll" onclick="RCALL=!RCALL;renderCohorts()"></button></div>
+ <div style="overflow-x:auto"><table class="g"><thead><tr><th>Cohort</th><th>CUSIPs</th><th>UPB $m</th><th>Cpn</th><th>WAC</th><th>CPR base</th><th>CPR scen.</th><th>Base income</th><th>Scen. income</th><th>Δ $m</th><th>Share</th><th>Δ bp/yr of UPB</th></tr></thead><tbody id="cohorts"></tbody></table></div>
+ <div class="note">All scenarios, years and the monthly detail are in <code>outputs/scenario_*.csv</code>.</div></div>
+</div>
+
+<div class="view" id="view-ear" role="tabpanel" aria-labelledby="vt-ear" hidden>
 <div id="floorNote" hidden></div>
 <div class="row">
  <div class="card stackc" id="fanCard"><div><h2>Monte Carlo rate fan<i class="i" tabindex="0" data-tip="Percentile bands of the simulated rate. Every path is the baseline plus a zero-mean deviation from the two-factor model, so the fan is centred on the baseline (dashed purple).">i</i></h2><div class="sub" id="fanSub"></div></div>
@@ -72,6 +123,7 @@
  <div class="grp"><button type="button" class="dl" id="tailAll"></button></div>
  <div style="overflow-x:auto"><table class="g"><thead><tr><th>Cohort</th><th>CUSIPs</th><th>UPB $m</th><th>Cpn</th><th>WAC</th><th>CPR baseline</th><th>CPR tail</th><th>Baseline income $m</th><th>Tail income $m</th><th>Δ $m</th><th>Share of shortfall</th><th>Δ bp/yr of UPB</th></tr></thead><tbody id="tail"></tbody></table></div>
  <div class="note">CPR is the average annualised prepayment speed over the horizon. Every measure, year and cohort is in <code>outputs/cohort_tail.csv</code>.</div></div>
+</div>
 </div>
 </div>
 <script>
@@ -136,7 +188,10 @@ function renderFan(){
     + `<span><span class="sw" style="background:#8FB0DC;opacity:.6"></span>P5–P95</span><span><span class="sw" style="background:#4F7FBF;opacity:.6"></span>P25–P75</span>`; }
 
 // ---------------------------------------------------------------- distribution
-function earHist(e, n, W, H){ const L = 10, Rr = 10, T = 26, Bm = 30, hs = e.hist, ed = e.edges, hm = Math.max(...hs), q = e.pct, f = v => fv(v, 0), c95 = e.conf['95'];
+// immediate parallel shocks (rate-specific view) placed on the distribution of the same horizon
+const shockMarks = () => RSD ? [['PAR_DN200', '−200'], ['PAR_DN100', '−100'], ['PAR_UP100', '+100'], ['PAR_UP200', '+200']]
+  .filter(([id]) => RSC[id]).map(([id, l]) => ({id, l, v: hinc(id, true), p: RSD.mc_pct[id][MS][HZ - 1]})) : [];
+function earHist(e, n, W, H){ const mk = shockMarks(), L = 10, Rr = 10, T = 26, Bm = mk.length ? 46 : 30, hs = e.hist, ed = e.edges, hm = Math.max(...hs), q = e.pct, f = v => fv(v, 0), c95 = e.conf['95'];
   const lo = Math.min(ed[0], e.baseline), hi = Math.max(ed[ed.length - 1], e.baseline);
   const X = v => L + (W - L - Rr) * (v - lo) / (hi - lo), bw = (X(ed[1]) - X(ed[0]));
   const col = (a, b) => { const m = (a + b) / 2; return m < q['5'] ? '#B23434' : m > q['95'] ? '#C9D1DA' : (m >= q['25'] && m <= q['75']) ? '#4F7FBF' : '#8FB0DC'; };
@@ -148,7 +203,13 @@ function earHist(e, n, W, H){ const L = 10, Rr = 10, T = 26, Bm = 30, hs = e.his
   const xb = X(e.baseline), x5 = X(q['5']);
   g += `<line x1="${x5.toFixed(1)}" x2="${xb.toFixed(1)}" y1="${T - 8}" y2="${T - 8}" stroke="#B23434"/><line x1="${xb.toFixed(1)}" x2="${xb.toFixed(1)}" y1="${T - 12}" y2="${T - 4}" stroke="#B23434"/><line x1="${x5.toFixed(1)}" x2="${x5.toFixed(1)}" y1="${T - 12}" y2="${T - 4}" stroke="#B23434"/>`
     + `<text x="${((x5 + xb) / 2).toFixed(1)}" y="${T - 13}" text-anchor="middle" style="fill:#B23434;font-weight:600">EaR 95%: $${f(c95.shortfall)}m (${pctOf(c95.shortfall_pct)})</text>`
-    + `<text x="${L}" y="${H - 3}">${hlab()} income, $m · ${n} paths · red = below P5</text>`;
+    + `<text x="${L}" y="${H - 3}">${hlab()} income, $m · ${n} paths · red = below P5${mk.length ? ' · ◆ immediate parallel shocks (bp)' : ''}</text>`;
+  // shocks outside the simulated range sit at the edge with an arrow, so they do not squash the histogram
+  const mx = mk.map(m => { const x = X(m.v), off = x < L ? -1 : x > W - Rr ? 1 : 0; return {...m, x: Math.min(Math.max(x, L + 4), W - Rr - 4), off}; });
+  mx.forEach(m => { const x = m.x.toFixed(1);
+    if (!m.off) g += `<line x1="${x}" x2="${x}" y1="${T}" y2="${H - Bm}" stroke="#D9772B" stroke-dasharray="1 2"/>`;
+    g += `<path d="M${x} ${H - Bm - 4} l4 4 l-4 4 l-4 -4 z" fill="#D9772B"><title>${m.l} bp immediate: ${hlab()} income $${f(m.v)}m, ${pctl(m.p)} of the simulated distribution${m.off ? ' (off the chart scale)' : ''}</title></path>`; });
+  spread(mx.map(m => ({t: m.off < 0 ? '‹ ' + m.l : m.off > 0 ? m.l + ' ›' : m.l, y: m.x})), 32, L + 14, W - Rr - 14).forEach(l => { g += `<text x="${l.y.toFixed(1)}" y="${H - Bm + 26}" text-anchor="middle" style="fill:#A84F15">${l.t}</text>`; });
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Distribution of ${hlab()} income across ${n} Monte Carlo paths, with the baseline">${g}</svg>`; }
 
 // ---------------------------------------------------------------- monthly cash flows by outcome
@@ -318,9 +379,13 @@ function render(){
     [`Baseline income · ${hshort()}`, fm(e.baseline), `${fm(e.interest_base)} coupon + ${fm(e.reinv_base)} reinvest`, 'Income on the baseline rate path, run through the same engine. Every shortfall is measured against it.'],
     ['EaR 95%', fms(-c.shortfall), `${pctOf(c.shortfall_pct)} of baseline · 95% interval ${fv(c.shortfall_ci[0], 0)}–${fv(c.shortfall_ci[1], 0)}m`, 'Baseline income minus the 5th percentile of simulated income in the official run. The interval is a bootstrap with antithetic pairs resampled together.'],
     ['P5 income', fm(c.income), `1 path in 20 earns less · ${K.mc_paths.toLocaleString('en-US')} paths`, 'The 5th percentile of simulated income over the horizon.'],
-    ['Mean vs baseline', fpc(100 * e.mean_minus_baseline_pct, 2), `mean ${fm(e.mean)} · convexity of income`, 'Mean simulated income minus baseline income, as a share of baseline. Income is a nonlinear function of rates, so the two differ: a measure of convexity, not an error.'],
-    ['EaR 99%', fms(-c99.shortfall), `${pctOf(c99.shortfall_pct)} of baseline · ${K.tail_paths.toLocaleString('en-US')} paths`, 'Baseline income minus the 1st percentile. A 99% measure needs about 5,000 paths (whitepaper section 7).'],
-    ['Expected shortfall 95%', fms(-es.shortfall), `${pctOf(es.shortfall_pct)} · average of the worst 5% · ${K.tail_paths.toLocaleString('en-US')} paths`, 'Baseline income minus the average income of the worst 5% of paths.'],
+    ...(RSD ? (() => { const w = worstId(true), b = bestId(true), dn = hdel('PAR_DN100', true), up = hdel('PAR_UP100', true);
+      return [['Worst rate scenario', fms(hdel(w, true)), `${sname(w)} · ${fpc(100 * hdel(w, true) / e.baseline)} of baseline · ${pctl(RSD.mc_pct[w][MS][HZ - 1])} of the Monte Carlo`, 'The deterministic scenario (Rate specific view) with the largest income loss against the baseline over this horizon, without overlays, and where it falls in the Monte Carlo distribution.'],
+        ['Best rate scenario', fms(hdel(b, true)), `${sname(b)} · ${fpc(100 * hdel(b, true) / e.baseline)} of baseline`, 'The deterministic scenario with the largest income gain against the baseline over this horizon, without overlays.'],
+        ['−100 / +100 bp', `${fd(dn, 0)} / ${fd(up, 0)}`, `$m vs baseline · immediate parallel · ${fpc(100 * dn / e.baseline)} / ${fpc(100 * up / e.baseline)}`, 'Income change against the baseline when every Treasury tenor and 1M SOFR move 100 bp from month 1 and the mortgage rate moves beta × 100 bp.']]; })()
+      : [['Mean vs baseline', fpc(100 * e.mean_minus_baseline_pct, 2), `mean ${fm(e.mean)} · convexity of income`, 'Mean simulated income minus baseline income, as a share of baseline.'],
+         ['EaR 99%', fms(-c99.shortfall), `${pctOf(c99.shortfall_pct)} of baseline`, 'Baseline income minus the 1st percentile.'],
+         ['Expected shortfall 95%', fms(-es.shortfall), `${pctOf(es.shortfall_pct)} · average of the worst 5%`, 'Baseline income minus the average income of the worst 5% of paths.']]),
     ['Calibration range', rng.length ? (() => { const lo = 100 * Math.min(...rng.map(r => r.shortfall_pct)), hi = 100 * Math.max(...rng.map(r => r.shortfall_pct)), d = hi >= 10 && Math.round(lo) !== Math.round(hi) ? 0 : 1; return `${num(lo, d)}–${num(hi, d)}%`; })() : '—', rng.length ? `recent / high_vol · official ${pctOf(c.shortfall_pct)}` : 'V8 not run', 'EaR 95% under the two alternative named calibrations (V8): the model-risk range reported beside the official figure.'],
   ].map(([l, v, s, tp]) => `<div class="kpi"><div class="l">${l}${tip(tp)}</div><div class="v" title="${String(v).replace(/<[^>]*>/g, '')}">${v}</div><div class="s" title="${String(s).replace(/<[^>]*>/g, '').replace(/"/g, '&quot;')}">${s}</div></div>`).join('');
   // V4 (whitepaper 11): shown only at horizons where the alternative-floor rerun moves EaR 95% by $0.5m or more;
@@ -338,7 +403,7 @@ function render(){
   $('floorNote').hidden = !fshow;
   $('distTitle').innerHTML = `Income distribution — ${hlab()}${tip('Simulated income over the horizon on every path, with the baseline income. EaR is the distance from the baseline down to the 5th percentile.')}`;
   $('earSub').textContent = `${K.mc_paths.toLocaleString('en-US')} paths (seed ${K.seed}) · each path moves prepayments, coupon income and the reinvestment rate together`;
-  $('earHist').innerHTML = earHist(e, K.mc_paths, 520, 176);
+  $('earHist').innerHTML = earHist(e, K.mc_paths, 520, RSD ? 192 : 176);
   $('earTable').innerHTML = [
     ['Baseline / mean', `${fm(e.baseline)} / ${fm(e.mean)} (${fpc(100 * e.mean_minus_baseline_pct, 2)})`],
     ['P5 income (95% interval)', `${fm(c.income)} (${fm(c.ci_low)} – ${fm(c.ci_high)})`],
@@ -347,6 +412,7 @@ function render(){
     [`Expected shortfall 95% / 99% (${K.tail_paths.toLocaleString('en-US')})`, `${fms(-es.shortfall)} / ${fms(-t.es['99'].shortfall)}`],
     ['Avg CPR: baseline / mean (P5–P95)', `${fp(e.cpr.baseline)} / ${fp(e.cpr.mean)} (${num(e.cpr.p5, 1)}–${num(e.cpr.p95, 1)}%)`],
     ['Skew', num(e.skew, 2) + (e.skew < -0.3 ? ' (long left tail)' : '')],
+    ...(RSD ? [['Parallel shocks (immediate) in this distribution', shockMarks().map(m => `${m.l} bp: ${pctl(m.p)}`).join(' · ')]] : []),
   ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
   $('hzTitle').firstChild.textContent = `Earnings at risk by horizon — ${MS} income`;
   $('hzSub').textContent = `$m · ${MS === 'cumulative' ? 'income from the as-of date to the end of each year' : 'income in each year alone'} · shortfalls against the ${RM.record.baseline.type} baseline`;
@@ -355,7 +421,22 @@ function render(){
   const bench = RM.v58 ? RM.v58.benchmark_paths : 0, tested = RM.v58 ? RM.v58.tested_paths : 0, conv = RM.v58 ? RM.v58.convergence.filter(r => r.n_paths === bench) : [];
   $('hzNote').innerHTML = `Calibration range = EaR 95% as % of baseline under the <i>recent</i> / <i>high_vol</i> calibrations (V8${RM.v58 ? ', computed ' + esc(RM.v58.computed_utc.slice(0, 10)) + ' for calibration ' + esc(RM.v58.calibration_id) : ''}). `
     + (RM.v58 && !RM.v58.convergence_pass ? `<b>V5 convergence fails:</b> the ${(bench || 0).toLocaleString('en-US')}-path 5th percentile lies outside the official ${(tested || 0).toLocaleString('en-US')}-path interval. ${(bench || 0).toLocaleString('en-US')}-path EaR 95% (cumulative): ${conv.map(r => r.years + 'y ' + fm(r.shortfall)).join(', ')}. See the <a href="whitepaper.html#res-s11">Rate model</a> page, section 11.` : '');
-  renderFan(); renderCF(); renderMetric(); renderBaseline(); renderHistory(); renderTail(); }
+  $('vtEarSub').textContent = `Monte Carlo, ${K.mc_paths.toLocaleString('en-US')} paths`;
+  renderFan(); renderCF(); renderMetric(); renderBaseline(); renderHistory(); renderTail(); renderRate(); }
+
+// ---------------------------------------------------------------- views: rate specific | earnings at risk
+const VIEWS = ['rate', 'ear'];
+let VIEW = 'ear';
+try { const v = localStorage.getItem('mbs_view'); if (VIEWS.includes(v)) VIEW = v; } catch (e) {}
+{ const hsh = location.hash.replace('#', ''); if (VIEWS.includes(hsh)) VIEW = hsh; else if (TABS.includes(hsh)) VIEW = 'ear'; }
+function setView(v, focus){ VIEW = v; try { localStorage.setItem('mbs_view', v); } catch (e) {}
+  VIEWS.forEach(k => { const on = k === v, b = $('vt-' + k); b.classList.toggle('on', on); b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; $('view-' + k).hidden = !on; });
+  $('folGrp').hidden = v !== 'rate';
+  if (history.replaceState) history.replaceState(null, '', '#' + v);
+  if (focus) $('vt-' + v).focus(); }
+$('viewBar').addEventListener('click', e => { const b = e.target.closest('.vtab'); if (b) setView(b.dataset.view); });
+$('viewBar').addEventListener('keydown', e => { const k = {ArrowRight: 1, ArrowLeft: -1}[e.key]; if (!k) return; e.preventDefault(); setView(VIEWS[(VIEWS.indexOf(VIEW) + k + 2) % 2], true); });
+setView(VIEW);
 render();
 </script>
 </body></html>

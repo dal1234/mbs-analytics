@@ -122,7 +122,7 @@ window.fillWhitepaper = function () {
       + tbl(['Paths', 'Years', 'EaR 95%', '% of baseline', 'P5 interval low', 'P5 interval high'], RM.v58.convergence.map(r => [r.n_paths.toLocaleString('en-US'), r.years, fm(r.shortfall), pc(r.shortfall_pct), fm(r.ci_low), fm(r.ci_high)]));
   }
   const v6 = RM.v6;
-  h += `<p><b>V6 Benchmark shocks</b> ${v6.pass ? '<span class="ok">direction consistent</span>' : '<span class="bad">direction inconsistent</span>'}: instantaneous parallel shifts of every rate, located in the simulated distribution of cumulative income.</p>`
+  h += `<p><b>V6 Benchmark shocks</b> ${v6.pass ? '<span class="ok">direction consistent</span>' : '<span class="bad">direction inconsistent</span>'}: the immediate parallel scenarios of section 13.4 (Treasuries and 1M SOFR move the shock, the mortgage rate β = ${f(off.beta_mort, 3)} × the shock), located in the simulated distribution of cumulative income. Every scenario is on the <a href="index.html#rate">Rate specific</a> view.</p>`
     + tbl(['Shock', 'Years', 'Income change', 'Percentile in distribution'], v6.rows.map(r => [(r.shock_bp > 0 ? '+' : '') + r.shock_bp + ' bp', r.years, pc(r.income_change_pct), f(r.percentile_in_distribution, 1)]));
   const v7 = CAL.parameter_uncertainty || [];
   h += `<p><b>V7 Estimation error</b> (200 refits of simulated histories of the window's length, official calibration; each history's deviations are measured from its own conditional expectation, the model analogue of the forward): re-estimated fan width relative to its bootstrap mean, the mean ratio to the generating parameters (1 = unbiased; a few % below 1 at 5 years is the small-sample bias of long-horizon standard deviations) and the 5–95% range of the re-estimated momentum.</p>`

@@ -525,7 +525,7 @@ of validation in supervisory guidance: conceptual soundness, outcomes analysis a
       <td>20,000-path result inside the 95% confidence interval of the official 5,000-path result. (Revised from
       "tested result inside the benchmark interval", which ignores the tested run's own sampling error and fails about a
       third of the time on converged results.)</td></tr>
-  <tr><td>V6</td><td>Benchmark shocks</td><td>Income under parallel shifts of &plusmn;100 and &plusmn;200 basis points, located as a percentile of the simulated income distribution.</td>
+  <tr><td>V6</td><td>Benchmark shocks</td><td>Income under the immediate parallel scenarios of &plusmn;100 and &plusmn;200 basis points (<a href="#s134">section 13.4</a>: Treasuries and 1M SOFR move the shock, the mortgage rate &beta; &times; the shock), located as a percentile of the simulated income distribution.</td>
       <td>Direction and ordering consistent with the simulated distribution. See note below.</td></tr>
   <tr><td>V7</td><td>Estimation error</td><td>Parametric bootstrap: histories are simulated from the fitted model (with momentum), their deviations measured from their own conditional expectation, refitted with the production estimator, and the spread of implied 12- and 60-month dispersion and of the momentum estimate reported.</td>
       <td>Reported with the EaR as a statement of calibration uncertainty.</td></tr>
@@ -536,7 +536,9 @@ of validation in supervisory guidance: conceptual soundness, outcomes analysis a
 Simulated paths start at the baseline and diffuse away from it, so an immediate 100-basis-point shift is a far more
 extreme event over the first year than the same shift reached at month 12. Instantaneous shocks will therefore sit
 deep in the tail at the one-year horizon. This is expected and is a reason to present the two measures as answering
-different questions.</p>
+different questions. V6 uses the same scenarios as the dashboard's Rate specific view, so the mortgage rate moves
+&beta; &times; the shock, as on every simulated path. (Before income model 1.1.0, V6 moved every rate, the mortgage rate
+included, by the full shock.)</p>
 <div class="res" id="res-s11" hidden><div class="res-h">Results of this run · validation tests V1 to V8</div><div class="res-b"></div></div>
 <h3>Ongoing monitoring</h3>
 <ul>
@@ -616,7 +618,8 @@ different questions.</p>
 </ul>
 <p>Sensitivity to calibration is still shown: the three named calibrations appear side by side (V8). Users may change
 inputs and views, which alter the question and not the model: the baseline, the horizon, cumulative or annual
-income, the portfolio segment, deterministic shock overlays and the percentile bands on the fan chart.</p>
+income, the portfolio segment, the deterministic rate scenarios and their overlays (<a href="#s134">section 13.4</a>)
+and the percentile bands on the fan chart.</p>
 <h3>13.3 Change control</h3>
 <ul>
   <li><strong>Recalibration.</strong> Annually, and off-cycle if a monitoring trigger in section 11 is breached.</li>
@@ -625,6 +628,38 @@ income, the portfolio segment, deterministic shock overlays and the percentile b
   <li><strong>Material changes.</strong> A change to the factor structure, distribution, estimator, official window or
       floor is a model change requiring revalidation. A scheduled recalibration on the existing window definition is
       not.</li>
+</ul>
+<h3 id="s134">13.4 Deterministic rate scenarios</h3>
+<p>The dashboard's <strong>Rate specific</strong> view runs fixed scenarios through the same income engine as the Monte
+Carlo. A scenario is built like a simulated path, the baseline plus a deviation, with the random deviation replaced by a
+fixed one and the mortgage spread deviation set to zero (<code>ratemodel/scenarios.py</code>). The calibration
+(&beta; and the tenor loadings) and the floor are the official ones, so a scenario and a simulated path with the same
+factor moves give the same rates:</p>
+<div class="eq">
+  <div>parallel &plusmn;X: &nbsp; d<sub>short</sub> = d<sub>1y</sub> = d<sub>2y</sub> = d<sub>5y</sub> = d<sub>10y</sub> = d<sub>30y</sub> = X, &nbsp; d<sub>mort</sub> = &beta; X &nbsp;&nbsp;&nbsp; from month 1, or w(t) X with w(t) = min(1, t / 12)</div>
+  <div>shape (S, L): &nbsp; d<sub>short</sub> = S, &nbsp; d<sub>10y</sub> = L, &nbsp; d<sub>k</sub> = a<sub>S,k</sub> S + a<sub>L,k</sub> L &nbsp;(k = 1, 2, 5, 30 years), &nbsp; d<sub>mort</sub> = &beta; L</div>
+  <div>r<sub>k</sub>(t) = max( b<sub>k</sub>(t) + d<sub>k</sub>(t), floor ) &nbsp;&nbsp;&nbsp; base: d = 0, the baseline itself</div>
+</div>
+<ul>
+  <li><strong>Families.</strong> Parallel shocks of &plusmn;100 to &plusmn;400 basis points, immediate and ramped over 12
+      months; six curve shapes (bull and bear steepeners and flatteners, two twists) that move the two model factors;
+      and a reference row with today's rates held flat. The definitions are in <code>config/model.yaml</code>
+      (<code>scenarios</code>).</li>
+  <li><strong>A parallel shock is not a factor shock.</strong> Moving both factors by X would move the 2-year by
+      (a<sub>S</sub> + a<sub>L</sub>) X, not X. Parallel scenarios therefore shift every Treasury tenor by X directly (the
+      regulatory convention for a parallel shock), and only the mortgage rate follows the calibrated pass-through &beta;.</li>
+  <li><strong>One reference.</strong> The base scenario is the EaR baseline (deviation zero, no floor applied), so its
+      income equals baseline income month by month; the run checks this. Every scenario is also located as a percentile of
+      the simulated distribution at the same horizon, as V6 does for &plusmn;100 and &plusmn;200.</li>
+  <li><strong>Attribution.</strong> Each scenario's change against the base is split exactly by moving one rate at a
+      time from the base path: the scenario mortgage rate alone (prepayment: coupon lost and the extra prepaid principal
+      reinvested at the base rate), the scenario reinvestment rate alone, and the interaction.</li>
+  <li><strong>Overlays.</strong> A mortgage spread (the 30-year mortgage rate only, phased in over 3 months) and a
+      multiplier on every prepayment speed re-run all scenarios. They are views of the same model; no overlay applies to
+      EaR.</li>
+  <li><strong>Status.</strong> The scenarios are inputs and views (section 13.2), not part of the model: changing their
+      sizes or shapes does not require revalidation. They answer a different question from EaR (what income does under
+      a named rate move, not how likely that move is); see the note on V6.</li>
 </ul>
 
 <!-- ===================================================================== -->

@@ -5,8 +5,9 @@ run_rates.py / the stored calibration.
         alternative floor and both are disclosed                                          (every run, if triggered)
     V5  convergence: EaR at each count in convergence_paths (default 1,000 / 5,000 / 20,000); the largest run's 5th
         percentile must lie inside the official run's 95% bootstrap interval    (when the calibration changes)
-    V6  benchmark shocks: instantaneous parallel shifts of +/-100 and +/-200 bp located as a percentile of the
-        simulated distribution; direction consistent with the simulated paths                 (every run: cheap)
+    V6  benchmark shocks: the immediate parallel scenarios of +/-100 and +/-200 bp (Treasuries and SOFR move the
+        shock, the mortgage rate beta x the shock: ratemodel.scenarios) located as a percentile of the simulated
+        distribution; direction consistent with the simulated paths                           (every run: cheap)
     V8  calibration sensitivity: EaR under every named calibration                (when the calibration changes)
 V5 and V8 are stored in calibration/income_validation.json keyed by calibration id and simulation settings, and reused
 until either changes (or run_model.py run --revalidate).
@@ -52,7 +53,7 @@ def shocks(df, rates, prepay, inc, H, proj, base_proj, shocks_bp=(-200, -100, 10
     out = []
     years = sorted({1, H // 12})
     for bp in shocks_bp:
-        si = project(df, rates.baseline_cube(bp), rates, prepay, inc, H).agg["income"][0]
+        si = project(df, rates.parallel_cube(bp), rates, prepay, inc, H).agg["income"][0]
         for y in years:
             sim = sums(proj.agg["income"], "cumulative", y, H)
             sh, b = si[: 12 * y].sum(), base_inc[: 12 * y].sum()

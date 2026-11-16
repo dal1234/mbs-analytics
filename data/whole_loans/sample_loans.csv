@@ -1,0 +1,8 @@
+id,behavior,status,upb,note_rate,servicing_bp,deferred_share,product,wala,wam,ltv,fico,avg_loan
+SDQ buyouts (90+ days),delinquent_buyout,sdq,9000,6.40,25,0.00,30Y,30,330,72,650,300000
+DQ buyouts (30-89 days),delinquent_buyout,dq,3000,6.60,25,0.00,30Y,24,336,75,640,310000
+Modified 2023-26 (rate and term),modified,current,22000,5.00,25,0.06,30Y,48,456,62,660,280000
+Modified pre-2020 (seasoned),modified,current,10000,4.25,25,0.10,30Y,150,300,45,670,200000
+Reperforming (payment deferral),reperforming,current,9000,5.75,25,0.04,30Y,36,324,66,670,290000
+Reperforming (re-delinquent),reperforming,dq,1500,5.50,25,0.04,30Y,40,320,68,650,280000
+Legacy portfolio loans,performing,current,1800,5.50,25,0.00,30Y,240,120,35,720,150000

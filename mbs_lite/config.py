@@ -39,6 +39,10 @@ def load_config(path: str | Path) -> dict:
     cfg.setdefault("validation", {}).setdefault("file", "../calibration/income_validation.json")
     cfg["validation"]["file"] = rel(cfg["validation"]["file"])
     cfg["history"]["file"] = rel(cfg["history"]["file"])
+    if (cfg.get("funding") or {}).get("file"):
+        cfg["funding"]["file"] = rel(cfg["funding"]["file"])
+    if (cfg.get("whole_loans") or {}).get("file"):
+        cfg["whole_loans"]["file"] = rel(cfg["whole_loans"]["file"])
     h = int(cfg.get("horizon_months", 60))
     if h < 12 or h % 12:
         raise ValueError("horizon_months must be a whole number of years, at least 12 (e.g. 60 for 1-5 year horizons)")

@@ -12,9 +12,11 @@ import numpy as np
 import pandas as pd
 
 from . import __version__
+from . import funding as fund
 from . import history as hist
 from . import scenarios as scen
 from . import validation as val
+from . import wholeloans as wl
 from .engine import cpr_from, project
 from .portfolio import load_portfolio
 from .prepay import SCurvePrepay, estimate_burnout
@@ -99,6 +101,10 @@ def run(cfg: dict, log=print, write_outputs: bool = True, write_dashboard: bool 
 
     rs = scen.run(df, rates, prepay, inc, H, cfg.get("scenarios") or {}, codes, labels, off.agg["income"], log)
     rs["cohorts"]["by"] = list(rk.get("cohort_by", ["product", "coupon", "vintage"]))
+    # liabilities: separate from asset income for now (same scenarios and paths, not netted)
+    fd = fund.run(cfg.get("funding") or {}, rates, rs["_cube"], rs["catalog"], H, log)
+    # whole loans: illustrative, separate from the MBS income and EaR (same scenarios, macro on a baseline)
+    wd = wl.run(cfg.get("whole_loans") or {}, rates, prepay, inc, rs["_cube"], rs["catalog"], H, log)
 
     v4 = val.floor_rerun(df, rates, prepay, inc, H, base, off_ear)
     v6 = val.shocks(df, rates, prepay, inc, H, off, base)
@@ -137,12 +143,12 @@ def run(cfg: dict, log=print, write_outputs: bool = True, write_dashboard: bool 
             idx = band(v, float(q), float(rk.get("band_pct", 5)))
             details[f"P{int(q):02d}"] = project(df, rates.mc[idx], rates, prepay, inc, H, mean_detail=True).detail
     checks = _checks(pf, rates, off, details, outs, tails, inc, v4, v6, v58)
-    checks[-1:-1] = _scenario_checks(rs, base)
+    checks[-1:-1] = _scenario_checks(rs, base) + _funding_checks(fd, cfg.get("funding") or {}) + _wholeloan_checks(wd)
     if write_outputs:
         out = Path(cfg["outputs"]["dir"])
         out.mkdir(parents=True, exist_ok=True)
         files = _write_outputs(out, df, rates, off, details, off_ear, tail_ear, outs, tails, checks, v4, v6, v58)
-        for name, frame in scen.frames(rs, rates).items():
+        for name, frame in [*scen.frames(rs, rates).items(), *(fund.frames(fd).items() if fd else []), *(wl.frames(wd).items() if wd else [])]:
             frame.to_csv(out / name, index=False, float_format="%.6f")
             files.append(name)
         log(f"Wrote {len(files)} files to {out}")
@@ -152,6 +158,8 @@ def run(cfg: dict, log=print, write_outputs: bool = True, write_dashboard: bool 
                                base, v4, v6, v58)
         data["decisions"] = decisions
         data["rate_specific"] = scen.public(rs)
+        data["funding"] = fund.public(fd)
+        data["whole_loans"] = wl.public(wd)
         dash = _write_dashboard(cfg, data)
         log(f"Dashboard  {dash / 'index.html'}  ({time.time() - t0:.1f}s)")
     for c in checks:
@@ -255,6 +263,37 @@ def _checks(pf, rates, off, details, outs, tails, inc, v4, v6, v58) -> list:
     add("V6 benchmark shocks", "PASS" if v6["pass"] else "WATCH",
         "direction of the parallel-shock results agrees with the simulated paths" if v6["pass"]
         else "parallel shocks and simulated paths disagree on the direction of income")
+    return out
+
+
+def _wholeloan_checks(wd) -> list:
+    """Whole loans: every dollar of starting UPB is in a loan state, cash, or losses at every month."""
+    if wd is None:
+        return []
+    o = wd["_o"]
+    loans = (o["bal_c"] + o["bal_d"] + o["bal_s"]).sum(axis=2)          # start of month (S, H)
+    cum_loss = np.concatenate([np.zeros((loans.shape[0], 1)), np.cumsum(o["loss"].sum(axis=2), axis=1)[:, :-1]], axis=1)
+    err = float(np.abs(loans + o["cash_bal"] + cum_loss - wd["upb"]).max())
+    return [{"check": "Whole loans add up", "status": "PASS" if err < 1.0 else "FAIL",
+             "detail": f"loan balances + runoff cash + cumulative losses = the starting ${wd['upb'] / 1e9:,.1f}bn every month on every scenario (max difference ${err:,.2f})"}]
+
+
+def _funding_checks(fd, fcfg) -> list:
+    """Liabilities: debt stays at the target balance (constant mode) and every dollar is accounted for."""
+    if fd is None:
+        return []
+    S = fd["_S"]
+    bal = S["balance"].sum(axis=2)                                    # begin-of-month balance (S, H)
+    out = []
+    if fcfg.get("balance", "constant") == "constant":
+        err = float(np.abs(bal - fd["face"]).max())
+        out.append({"check": "Funding balance held at target", "status": "PASS" if err < 1.0 else "FAIL",
+                    "detail": f"debt outstanding equals the starting ${fd['face'] / 1e9:,.1f}bn at the start of every month on every "
+                              f"scenario (max difference ${err:,.2f})"})
+    flow = bal[:, :-1] - S["matured"].sum(axis=2)[:, :-1] - S["called"].sum(axis=2)[:, :-1] + S["issued"].sum(axis=2)[:, :-1]
+    ferr = float(np.abs(flow - bal[:, 1:]).max())
+    out.append({"check": "Funding roll-forward", "status": "PASS" if ferr < 1.0 else "FAIL",
+                "detail": f"balance(t+1) = balance(t) - maturities - calls + new issues on every scenario (max difference ${ferr:,.2f})"})
     return out
 
 

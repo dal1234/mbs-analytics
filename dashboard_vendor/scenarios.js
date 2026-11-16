@@ -42,7 +42,7 @@ const dheat = (v, mx) => { const a = Math.abs(v) / (mx || 1); let bg = 'transpar
     else { bg = a < .1 ? '#FBECEC' : a < .3 ? '#F7D9D9' : a < .6 ? '#F1BFBF' : '#E9A3A3'; c = a < .3 ? '#B23434' : '#8E2727'; } }
   return `<span class="heat" style="background:${bg};color:${c}">${fd(v, 0)}</span>`; };
 
-function setFocus(id){ FOCUS = (!id || FOCUS === id) ? null : id; renderRate(); }
+function setFocus(id){ FOCUS = (!id || FOCUS === id) ? null : id; renderRate(); if (typeof renderLiab === 'function') renderLiab(); if (typeof renderWL === 'function') renderWL(); }
 function setOv(k, v){ if (k === 's') OVS = v; else OVM = v; renderRate(); }
 function rpick(k, v){ if (k === 'fam') RFAM = v; else if (k === 'ramp') RRAMP = v; else RTEN = v; GRID_OPEN = {}; renderRate(); }
 function gridToggle(k){ GRID_OPEN[k] = !gridSecOpen(k); renderRate(); }

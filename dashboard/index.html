@@ -5,6 +5,9 @@
 <script src="data.js"></script>
 <script src="common.js"></script>
 <script src="scenarios.js"></script>
+<script src="liabilities.js"></script>
+<script src="wholeloans.js"></script>
+<script src="roadmap.js"></script>
 </head><body>
 <div id="top"></div>
 <script>if (window.DATA) header('index.html');</script>
@@ -16,6 +19,9 @@
 <div class="vtabs" role="tablist" aria-label="Views" id="viewBar">
  <button type="button" role="tab" class="vtab" id="vt-rate" data-view="rate" aria-controls="view-rate" aria-selected="false" tabindex="-1">Rate specific<span class="vs">deterministic scenarios on the same engine</span></button>
  <button type="button" role="tab" class="vtab" id="vt-ear" data-view="ear" aria-controls="view-ear" aria-selected="false" tabindex="-1">Earnings at risk<span class="vs" id="vtEarSub">Monte Carlo</span></button>
+ <button type="button" role="tab" class="vtab" id="vt-liab" data-view="liab" aria-controls="view-liab" aria-selected="false" tabindex="-1">Liabilities<span class="vs">debt book and funding cost · separate for now</span></button>
+ <button type="button" role="tab" class="vtab" id="vt-wl" data-view="wl" aria-controls="view-wl" aria-selected="false" tabindex="-1">Whole loans<span class="vs">single family · runoff · illustrative</span></button>
+ <button type="button" role="tab" class="vtab" id="vt-tgt" data-view="tgt" aria-controls="view-tgt" aria-selected="false" tabindex="-1">Target state<span class="vs">full analytics suite · progress</span></button>
 </div>
 
 <div class="view" id="view-rate" role="tabpanel" aria-labelledby="vt-rate" hidden>
@@ -61,6 +67,53 @@
  <div style="overflow-x:auto"><table class="g"><thead><tr><th>Cohort</th><th>CUSIPs</th><th>UPB $m</th><th>Cpn</th><th>WAC</th><th>CPR base</th><th>CPR scen.</th><th>Base income</th><th>Scen. income</th><th>Δ $m</th><th>Share</th><th>Δ bp/yr of UPB</th></tr></thead><tbody id="cohorts"></tbody></table></div>
  <div class="note">All scenarios, years and the monthly detail are in <code>outputs/scenario_*.csv</code>.</div></div>
 </div>
+
+<div class="view" id="view-liab" role="tabpanel" aria-labelledby="vt-liab" hidden>
+<div class="infonote"><b>Separate from asset income for now.</b> Interest expense on the debt book along the same rate scenarios and Monte Carlo paths as the other views. It is not netted into income or EaR yet; the Rate specific and Earnings at risk views are unchanged.</div>
+<div class="card stackc" id="lbCard"><div><h2>Debt book<i class="i" tabindex="0" data-tip="The debt file in funding.file (config/model.yaml): one row per instrument or bucket, with type, face, coupon or spread, maturity and first call date.">i</i></h2><div class="sub" id="lbSrc"></div></div>
+ <div class="tiles" id="lbTiles"></div>
+ <div class="row rowbk" style="align-items:start">
+  <div style="overflow-x:auto"><table class="g"><thead><tr><th>Group</th><th>Type</th><th>Face $m</th><th>Share</th><th>Rate</th><th>Maturities</th><th>Callable $m</th></tr></thead><tbody id="lbBody"></tbody></table></div>
+  <div><div class="lbl">Contractual maturities and first call dates</div><div id="lbProfile"></div><div class="legend" id="lbLegend"></div></div>
+ </div></div>
+<div class="card stackc" id="lgCard"><div><h2>Funding cost by scenario<i class="i" tabindex="0" data-tip="Interest expense on the debt book under each rate scenario of the Rate specific view, by year, over the horizon and against the base.">i</i></h2><div class="sub sub2" id="lgSub"></div></div>
+  <div style="overflow-x:auto"><table class="g"><thead id="lgHead"></thead><tbody id="lgBody"></tbody></table></div></div>
+<div class="row">
+ <div class="card stackc" id="ldCard"><div><h2>Funding cost distribution<i class="i" tabindex="0" data-tip="Interest expense on the debt book over the horizon on every official Monte Carlo path (the same paths as EaR). Funding cost at risk 95% = the 95th percentile minus the cost on the baseline path: for debt, the risk is a higher cost.">i</i></h2><div class="sub sub2">Monte Carlo · the same paths as the Earnings at risk view · the risk on debt is a higher cost</div></div>
+  <div id="ldHist"></div><table class="g wrapall"><tbody id="ldTable"></tbody></table></div>
+ <div class="card stackc" id="lbalCard"><div><h2 id="lbalTitle">Debt by type<i class="i" tabindex="0" data-tip="Debt outstanding at the start of each month by type, for the scenario you follow. New issues keep the total at its target and restore the mix.">i</i></h2><div class="sub sub2">$bn at the start of each month · horizon shaded</div></div>
+  <div id="lbalChart"></div><div class="legend" id="lbalLegend"></div></div>
+</div>
+<div class="card stackc" id="lmCard"><div><h2 id="lmTitle">Monthly interest expense<i class="i" tabindex="0" data-tip="The scenario you follow (the base when none): interest on the debt outstanding today and on debt issued to replace maturities and calls.">i</i></h2><div class="sub" id="lmSub"></div></div>
+ <div id="lmChart"></div><div class="legend" id="lmLegend"></div><div class="tiles" id="lmTiles"></div></div>
+<div class="card stackc" id="lflowCard"><div><h2 id="lflowTitle">By year<i class="i" tabindex="0" data-tip="Interest by type, maturities, calls and new issues by type, for the scenario you follow.">i</i></h2><div class="sub">$m · rows in the horizon shaded · all scenarios and months in outputs/funding_*.csv</div></div>
+ <div style="overflow-x:auto"><table class="g"><thead><tr><th>Year</th><th>Interest</th><th>Disc. notes</th><th>Floating</th><th>Fixed</th><th>Callable</th><th>Matured</th><th>Called</th><th>Issued DN</th><th>Issued float</th><th>Issued fixed</th><th>Issued callable</th><th>Δ interest vs base</th></tr></thead><tbody id="lflowBody"></tbody></table></div></div>
+<div class="card stackc" id="lpCard"><div><h2>Funding policy and reconciliation<i class="i" tabindex="0" data-tip="How maturities and calls are replaced, and how the model compares with the reported cost of debt. Set in funding (config/model.yaml).">i</i></h2><div class="sub">From <code>config/model.yaml</code> (<code>funding</code>) · mbs_lite/funding.py</div></div>
+ <div style="overflow-x:auto"><table class="g wrapall"><thead><tr><th>New issues</th><th>Target mix</th><th>Term</th><th>Priced at</th></tr></thead><tbody id="lpBody"></tbody></table></div>
+ <div class="explain" id="lpText" style="font-size:12px"></div></div>
+</div>
+
+<div class="view" id="view-wl" role="tabpanel" aria-labelledby="vt-wl" hidden>
+<div class="mocknote"><b>Illustrative.</b> Single-family whole loans in runoff, at cohort level, with constant monthly delinquency transitions and house prices and unemployment on a fixed baseline. Interest income and expected credit losses are separate lines. Separate from the MBS income and EaR; the cohorts and rates are illustrative, not data.</div>
+<div class="card stackc" id="wbCard"><div><h2>Loan book<i class="i" tabindex="0" data-tip="The cohort file in whole_loans.file (config/model.yaml): one row per cohort with behavior class, starting delinquency status, UPB, note rate, deferred share, LTV and FICO.">i</i></h2><div class="sub" id="wbSrc"></div></div>
+ <div class="tiles" id="wbTiles"></div>
+ <div style="overflow-x:auto"><table class="g"><thead><tr><th>Cohort</th><th>Behavior</th><th>Status today</th><th>UPB $m</th><th>Note rate</th><th>Deferred</th><th>LTV</th><th>FICO</th><th>WAM</th><th id="wbIncHead">Interest</th><th id="wbLossHead">Losses</th></tr></thead><tbody id="wbBody"></tbody></table></div></div>
+<div class="card stackc" id="wgCard"><div><h2>Income and expected losses by scenario<i class="i" tabindex="0" data-tip="Each rate scenario of the Rate specific view run through the whole-loan cohorts. Rates move prepayments (mortgage rate) and the income on runoff cash (SOFR); credit transitions stay on the macro baseline.">i</i></h2><div class="sub sub2" id="wgSub"></div></div>
+ <div style="overflow-x:auto"><table class="g"><thead><tr><th>Scenario</th><th>Interest income</th><th>Cash at SOFR</th><th>Expected losses</th><th>After losses</th><th>Δ vs base</th><th>Effective yield</th><th>Loss-adj. yield</th><th>CPR</th></tr></thead><tbody id="wgBody"></tbody></table></div></div>
+<div class="card stackc" id="wmCard"><div><h2 id="wmTitle">Monthly income and expected losses<i class="i" tabindex="0" data-tip="The scenario you follow (the base when none): interest income, SOFR on runoff cash, and expected credit losses as a separate line below the axis.">i</i></h2><div class="sub" id="wmSub"></div></div>
+ <div id="wmChart"></div><div class="legend" id="wmLegend"></div><div class="tiles" id="wmTiles"></div></div>
+<div class="row">
+ <div class="card stackc" id="wbalCard"><div><h2 id="wbalTitle">Balances by status<i class="i" tabindex="0" data-tip="Loan UPB by delinquency status at the start of each month, and runoff cash (principal and recoveries) earning SOFR.">i</i></h2><div class="sub sub2">$bn at the start of each month · horizon shaded</div></div>
+  <div id="wbalChart"></div><div class="legend" id="wbalLegend"></div></div>
+ <div class="card stackc" id="waCard"><div><h2>Assumptions<i class="i" tabindex="0" data-tip="Monthly transition rates by behavior class, severity and the macro baseline, from whole_loans in config/model.yaml.">i</i></h2><div class="sub sub2">Monthly rates · C = current, 30 = 30–89 days, 90 = 90+ days (nonaccrual), liq = liquidation · prepay = multiplier on the S-curve</div></div>
+  <div style="overflow-x:auto"><table class="g"><thead><tr><th>Behavior</th><th title="current to 30-89 days">C→30</th><th title="30-89 days back to current">30→C</th><th title="30-89 days to 90+">30→90</th><th title="90+ back to current (cures and modifications)">90→C</th><th title="90+ to liquidation">90→liq</th><th title="prepayment multiplier on the S-curve">Prepay</th></tr></thead><tbody id="waBody"></tbody></table></div>
+  <div class="explain" id="waText" style="font-size:12px"></div></div>
+</div>
+<div class="card stackc" id="wyCard"><div><h2 id="wyTitle">By year<i class="i" tabindex="0" data-tip="The scenario you follow, year by year. All scenarios and months are in outputs/wholeloan_*.csv.">i</i></h2><div class="sub">$m · rows in the horizon shaded</div></div>
+ <div style="overflow-x:auto"><table class="g"><thead><tr><th>Year</th><th>Avg loan UPB</th><th>Interest</th><th>Cash at SOFR</th><th>Exp. losses</th><th>After losses</th><th>Eff. yield</th><th>Loss-adj.</th><th>Scheduled</th><th>Prepaid</th><th>Liquidated</th><th>CPR</th></tr></thead><tbody id="wyBody"></tbody></table></div></div>
+</div>
+
+<div class="view" id="view-tgt" role="tabpanel" aria-labelledby="vt-tgt" hidden></div>
 
 <div class="view" id="view-ear" role="tabpanel" aria-labelledby="vt-ear" hidden>
 <div id="floorNote" hidden></div>
@@ -422,20 +475,20 @@ function render(){
   $('hzNote').innerHTML = `Calibration range = EaR 95% as % of baseline under the <i>recent</i> / <i>high_vol</i> calibrations (V8${RM.v58 ? ', computed ' + esc(RM.v58.computed_utc.slice(0, 10)) + ' for calibration ' + esc(RM.v58.calibration_id) : ''}). `
     + (RM.v58 && !RM.v58.convergence_pass ? `<b>V5 convergence fails:</b> the ${(bench || 0).toLocaleString('en-US')}-path 5th percentile lies outside the official ${(tested || 0).toLocaleString('en-US')}-path interval. ${(bench || 0).toLocaleString('en-US')}-path EaR 95% (cumulative): ${conv.map(r => r.years + 'y ' + fm(r.shortfall)).join(', ')}. See the <a href="whitepaper.html#res-s11">Rate model</a> page, section 11.` : '');
   $('vtEarSub').textContent = `Monte Carlo, ${K.mc_paths.toLocaleString('en-US')} paths`;
-  renderFan(); renderCF(); renderMetric(); renderBaseline(); renderHistory(); renderTail(); renderRate(); }
+  renderFan(); renderCF(); renderMetric(); renderBaseline(); renderHistory(); renderTail(); renderRate(); renderLiab(); renderWL(); renderTarget(); }
 
 // ---------------------------------------------------------------- views: rate specific | earnings at risk
-const VIEWS = ['rate', 'ear'];
+const VIEWS = ['rate', 'ear', 'liab', 'wl', 'tgt'];
 let VIEW = 'ear';
 try { const v = localStorage.getItem('mbs_view'); if (VIEWS.includes(v)) VIEW = v; } catch (e) {}
 { const hsh = location.hash.replace('#', ''); if (VIEWS.includes(hsh)) VIEW = hsh; else if (TABS.includes(hsh)) VIEW = 'ear'; }
 function setView(v, focus){ VIEW = v; try { localStorage.setItem('mbs_view', v); } catch (e) {}
   VIEWS.forEach(k => { const on = k === v, b = $('vt-' + k); b.classList.toggle('on', on); b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; $('view-' + k).hidden = !on; });
-  $('folGrp').hidden = v !== 'rate';
+  $('folGrp').hidden = v === 'ear' || v === 'tgt';
   if (history.replaceState) history.replaceState(null, '', '#' + v);
   if (focus) $('vt-' + v).focus(); }
 $('viewBar').addEventListener('click', e => { const b = e.target.closest('.vtab'); if (b) setView(b.dataset.view); });
-$('viewBar').addEventListener('keydown', e => { const k = {ArrowRight: 1, ArrowLeft: -1}[e.key]; if (!k) return; e.preventDefault(); setView(VIEWS[(VIEWS.indexOf(VIEW) + k + 2) % 2], true); });
+$('viewBar').addEventListener('keydown', e => { const k = {ArrowRight: 1, ArrowLeft: -1}[e.key]; if (!k) return; e.preventDefault(); setView(VIEWS[(VIEWS.indexOf(VIEW) + k + VIEWS.length) % VIEWS.length], true); });
 setView(VIEW);
 render();
 </script>

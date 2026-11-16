@@ -1,0 +1,28 @@
+id,type,group,face,rate,spread_bp,maturity,first_call
+DN-2610,discount_note,Short-term debt,8000,3.88,,2026-10,
+DN-2611,discount_note,Short-term debt,7000,3.88,,2026-11,
+DN-2612,discount_note,Short-term debt,6000,3.88,,2026-12,
+DN-2701,discount_note,Short-term debt,5000,3.88,,2027-01,
+DN-2702,discount_note,Short-term debt,3120,3.88,,2027-02,
+DN-2703,discount_note,Short-term debt,2000,3.88,,2027-03,
+BMK-2711,fixed,Benchmark notes and bonds,5000,4.875,,2027-11,
+BMK-2803,fixed,Benchmark notes and bonds,5000,5.10,,2028-03,
+BMK-2906,fixed,Benchmark notes and bonds,5000,5.20,,2029-06,
+BMK-3009,fixed,Benchmark notes and bonds,4470,5.07,,2030-09,
+MTNC-2810,callable,Medium-term notes (fixed),8000,4.10,,2028-10,2026-10
+MTNC-2904,callable,Medium-term notes (fixed),9000,3.95,,2029-04,2027-01
+MTNC-2910,callable,Medium-term notes (fixed),10000,3.75,,2029-10,2027-04
+MTNC-3001,callable,Medium-term notes (fixed),9000,3.70,,2030-01,2027-07
+MTNC-2901,callable,Medium-term notes (fixed),9000,3.65,,2029-01,2027-01
+MTNC-2907,callable,Medium-term notes (fixed),9000,3.60,,2029-07,2027-07
+MTN-2612,fixed,Medium-term notes (fixed),1506,3.40,,2026-12,
+MTN-3306,fixed,Medium-term notes (fixed),2000,4.00,,2033-06,
+MTN-3603,fixed,Medium-term notes (fixed),2000,4.20,,2036-03,
+OTHC-3606,callable,Other (fixed),3300,4.30,,2036-06,2027-06
+OTHC-3803,callable,Other (fixed),3000,3.60,,2038-03,2028-03
+OTH-2712,fixed,Other (fixed),81,3.00,,2027-12,
+FRN-2612,floating,Medium-term notes (floating),10000,,8,2026-12,
+FRN-2710,floating,Medium-term notes (floating),12000,,10,2027-10,
+FRN-2712,floating,Medium-term notes (floating),15000,,12,2027-12,
+FRN-2806,floating,Medium-term notes (floating),14435,,13,2028-06,
+OFL-3306,floating,Other (floating),819,,548,2033-06,

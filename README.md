@@ -26,7 +26,7 @@ EaR 95%        = baseline income - 5th percentile of simulated income, per horiz
 |---|---|---|
 | Rate model (`ratemodel/`) | Calibration (stored, refitted annually or on demand), baseline (forward / flat / house view), simulation, rate validation V1–V4 and V7 | `run_rates.py` |
 | Income model (`mbs_lite/`) | Portfolio validation, prepayment model, cash flows, EaR with bootstrap intervals, deterministic rate scenarios (section 5a), validation V4–V6 and V8, run history | `run_model.py` |
-| Dashboard (`dashboard/`) | **Income risk**: one KPI row (portfolio, baseline income, EaR 95%, P5, worst and best rate scenario, ±100 bp, calibration range) for the horizon chosen in the bar, then two views. **Rate specific** (`index.html#rate`): rate paths and curve shapes, the income sensitivity grid with spread and prepayment overlays, why income moves (monthly income, income by scenario, drivers, attribution), cash flows (balances and rates, by year, waterfall) and cohorts, all following the scenario you pick. **Earnings at risk** (`index.html#ear`): rate fan and income distribution (with the ±100/±200 bp shocks marked), then tabs: cash flows by outcome, rates and speeds, baseline by month, EaR by horizon, EaR over time, tail attribution (a tab can be linked as `index.html#bl` etc.). Also **Portfolio**, **Models & assumptions**, **Rate model** (the whitepaper with this run's results) | open `dashboard/index.html` |
+| Dashboard (`dashboard/`) | **Income risk**: one KPI row (portfolio, baseline income, EaR 95%, P5, worst and best rate scenario, ±100 bp, calibration range) for the horizon chosen in the bar, then two views. **Rate specific** (`index.html#rate`): rate paths and curve shapes, the income sensitivity grid with spread and prepayment overlays, why income moves (monthly income, income by scenario, drivers, attribution), cash flows (balances and rates, by year, waterfall) and cohorts, all following the scenario you pick. **Earnings at risk** (`index.html#ear`): rate fan and income distribution (with the ±100/±200 bp shocks marked), then tabs: cash flows by outcome, rates and speeds, baseline by month, EaR by horizon, EaR over time, tail attribution (a tab can be linked as `index.html#bl` etc.). **Liabilities** (`#liab`, section 5b) and **Whole loans** (`#wl`, section 5c), separate from income for now. **Target state** (`#tgt`): the components of a full portfolio analytics suite (net interest income from portfolios by line item, runoff vs new business; other capital-markets income lines; behavioral models; the analytics they enable; data) marked complete, in progress or not started; edit `mbs_lite/templates/roadmap.js` to update it. Also **Portfolio**, **Models & assumptions**, **Rate model** (the whitepaper with this run's results) | open `dashboard/index.html` |
 | Two approaches (section 7a) | **Official**: Treasury forward baseline + historical volatility (the validated model). **Vendor emulation**: SOFR swap forward baseline + market-implied volatility, our reading of a risk-neutral vendor model, for comparison. Each has its own config, outputs and dashboard; the dashboards link to each other | `config/*_vendor.yaml` |
 | Tools (`tools/`) | `mock_history.py` (mock-up of 12 months of history), `estimator_study.py` (reproduces whitepaper table 6.1), `vols_from_percentiles.py` (market volatility inputs from another model's percentiles or quoted implied vols), `compare_runs.py` (official vs vendor emulation, side by side) | |
 
@@ -200,6 +200,13 @@ plenty.
 | `scenarios.shapes` | 6 shapes | `{id, name, short_bp, long_bp}`: 1M SOFR and 10-year moves of each curve shape |
 | `scenarios.include_flat` | `true` | Reference row with today's rates held |
 | `scenarios.overlays` | spread −50…+50 bp, prepay 0.75/1.00/1.25× | Combinations re-run on every scenario for the grid's overlay buttons |
+| `funding.file`, `.enabled` | sample debt book, `true` | Debt book for the Liabilities view (section 5b); remove the file or set `enabled: false` to skip |
+| `funding.balance`, `.target_mix` | `constant`, `current` | Replace maturities and calls to keep today's balance (or `runoff`); new issues restore the starting mix (or give shares by type) |
+| `funding.new_issues` | DN 3m SOFR+0, floater 24m SOFR+10, bullet 36m Tsy+15, callable 48nc12 Tsy+35 | Term and spread of new debt by type |
+| `funding.call_rule` | 25 bp threshold, refinance at Tsy+35 | When a callable is called |
+| `whole_loans.file`, `.enabled` | sample cohorts, `true` | Single-family whole-loan cohorts for the Whole loans view (section 5c); remove or `enabled: false` to skip |
+| `whole_loans.behavior` | 4 classes | Monthly transition rates (current→30, 30→current, 30→90+, 90+→current, 90+→liquidation) and a prepayment multiplier per class |
+| `whole_loans.severity`, `.macro` | cost 25%, floor 5%; HPI +3%/yr, unemployment 4.3% | Loss severity from LTV; baseline house price and unemployment paths, held on every rate path |
 
 `config/rates.yaml` (rate model): data cache, calibration file, baseline (`baseline.type`: forward, swap, flat or file,
 plus `baseline.swap` for the swap curve) and volatility (`volatility.type`: historical or market, plus
@@ -226,6 +233,8 @@ paths, V5 convergence counts 1,000 / 5,000 / 20,000, antithetic, moment matching
 | `scenario_income.csv` | Rate scenarios: per scenario and year, income, coupon, reinvestment, principal, balances, CPR, change vs base (annual and cumulative), percentile in the Monte Carlo distribution |
 | `scenario_monthly.csv`, `scenario_rates.csv` | Rate scenarios month by month: income lines, balances, CPR, reinvestment rate; the seven rate series of each scenario path |
 | `scenario_attribution.csv`, `scenario_overlays.csv` | Change vs base split into prepayment (coupon, reinvested principal), reinvestment rate and interaction; income and CPR under each overlay |
+| `funding_scenarios.csv`, `funding_monthly.csv` | Liabilities: interest expense by scenario and year (by type, vs base, Monte Carlo percentile), maturities, calls and new issues; the same month by month with balances by type |
+| `wholeloan_scenarios.csv`, `wholeloan_monthly.csv` | Whole loans: interest income, SOFR on runoff cash and expected credit losses (separate lines) by scenario and year; balances by delinquency status month by month |
 | `validation_v5_convergence.csv`, `_v6_shocks.csv`, `_v8_calibrations.csv`, (`_v4_floor_rerun.csv`) | Income-dependent validation |
 | `checks.csv` | The run's checks |
 
@@ -274,6 +283,68 @@ base           the baseline itself = the EaR baseline; flat = today's rates held
 - Scenarios are views, not model settings: change them in `config/model.yaml` (`scenarios`) without revalidation.
   Not covered: historical replays, named combined scenarios, realized-volatility and user-drawn paths. The **Custom**
   option on the rate card is a drawing preview: you can draw a path and press Run, but nothing is calculated.
+
+## 5b. Liabilities (funding cost), separate for now
+
+`mbs_lite/funding.py` runs a debt book through the same rate scenarios and Monte Carlo paths and reports interest
+expense on the dashboard's **Liabilities** view (`index.html#liab`) and in `outputs/funding_*.csv`. It is **not netted**
+into income or EaR yet; the other views are unchanged. Integration (net interest income = asset income − funding
+cost, with the debt balance tied to the asset balance) is the next step.
+
+**Debt file** (`funding.file`, default `data/liabilities/sample_debt.csv`), one row per instrument or bucket, face in
+$ millions:
+
+| Column | Meaning |
+|---|---|
+| `id`, `group` | Label and reporting group |
+| `type` | `discount_note` (fixed yield), `fixed` (bullet), `callable` (fixed, callable from `first_call`), `floating` (1M SOFR + `spread_bp`, reset monthly) |
+| `face`, `rate`, `spread_bp` | Face ($m); coupon or yield (%) for fixed types; spread over the index for floaters |
+| `maturity`, `first_call` | `YYYY-MM`; `first_call` only for callables |
+
+The sample is Fannie Mae's own debt at 2026-09-30 from its Q3 2026 Form 10-Q (Note 8 and Liquidity and Capital
+Management): $168.7bn in six groups (discount notes $31.1bn at 3.88%, benchmark notes $19.5bn at 5.06%, fixed MTNs
+$59.5bn at 3.80%, other fixed $6.4bn, floating MTNs $51.4bn at 3.86%, other floating $0.8bn), callable $60.3bn at
+3.80%, split into representative buckets whose totals, average rates and maturity ranges match the filing. Debt of
+consolidated trusts (the MBS) is excluded. Replace it with your own book.
+
+**Each month, on every path:** interest = face × rate / 12 (floaters at 1M SOFR at the start of the month + spread);
+debt matures on schedule; a callable past its first call date is called when its coupon exceeds the cost of replacing
+its remaining term (Treasury curve + `call_rule.refi_spread_bp`) by more than `call_rule.threshold_bp`; new issues
+keep the total at today's balance (`balance: constant`; `runoff` issues nothing) and restore the starting mix by type,
+priced off 1M SOFR (discount notes, floaters) or the Treasury curve at the term (bullets, callables) plus the
+configured spreads (calibrated to Q3 2026 issuance).
+
+**Reported vs model.** The model counts contractual coupons: about 4.07% a year on the base path in the first quarter.
+Fannie reports 4.28% for the first nine months of 2026, which also includes amortization of debt discounts and hedge
+accounting. **Funding cost at risk 95%** = 95th percentile of interest expense over the horizon minus the base: for
+debt the risk is a higher cost (on the sample, +$0.87bn over one year).
+
+## 5c. Whole loans (single family, runoff, illustrative), separate for now
+
+`mbs_lite/wholeloans.py` runs single-family whole-loan cohorts in runoff through the same rate scenarios and shows them
+on the **Whole loans** view (`index.html#wl`) and in `outputs/wholeloan_*.csv`. It is deliberately simple: an
+illustration of the mechanics, not a credit model. Not netted into income or EaR.
+
+**Cohort file** (`whole_loans.file`, default `data/whole_loans/sample_loans.csv`), one row per cohort, UPB in $m:
+`id, behavior, status, upb, note_rate, servicing_bp, deferred_share, product, wala, wam, ltv, fico, avg_loan`.
+`status` is the starting state (`current`, `dq` = 30–89 days, `sdq` = 90+ days); `behavior` picks a set of transition
+rates in `whole_loans.behavior`; `deferred_share` is UPB that earns no interest (deferred under a modification).
+
+**Each month:** interest = (current + 30–89 balance) × (1 − deferred share) × (note rate − servicing) / 12, cash coupon
+only; 90+ loans accrue nothing. Current loans amortize and prepay on the S-curve (mortgage rate) × the class multiplier.
+Constant monthly transitions move balances current → 30–89 → 90+ → liquidation, with cures back to current.
+Liquidations lose severity = max(5%, 1 − 0.75 / LTV(t)), LTV(t) = starting LTV / house price index. Principal and
+recoveries become cash earning SOFR, as in the MBS engine. Interest income and **expected credit losses** are separate
+lines; **effective yield** = interest income / average loan UPB (and after losses, the loss-adjusted yield).
+
+**Baseline macro.** House prices (+3% a year) and unemployment (4.3%) follow a fixed baseline on every rate path, so
+expected losses are the same in every rate scenario; rates move only prepayments and the income on runoff cash.
+
+**Sample.** About $56bn in seven cohorts, sized like Fannie Mae's loss-mitigation loans ($54.5bn at 2026-09-30) and
+legacy loans. The performing-class rates and the 90+ exits (13.5% a month cured or modified, 2.5% liquidated) are set
+from Fannie's 2026 single-family delinquency flows in the Q3 2026 10-Q; the other classes, balances, rates and LTVs are
+illustrative. On the base path: year-1 interest income $2.30bn (effective yield 4.22%; Fannie reports 3.95% on all its
+own loans, GAAP), expected losses $85m.
 
 ---
 
@@ -540,6 +611,14 @@ builds up one real point per run; `tools/mock_history.py` mocks only the officia
 - Rate scenarios cover parallel and curve-shape moves only (no historical replays, named combinations,
   realized-volatility or user-drawn paths); curve shapes are immediate and at one size. A scenario says nothing about
   likelihood: read it with its percentile in the Monte Carlo distribution.
+- Whole loans are illustrative: constant cohort-level delinquency transitions (not a fitted credit model), macro on a
+  fixed baseline (losses do not move with rates), cash coupon only (no discount accretion, CECL allowance, foreclosure
+  timelines or loan sales), single family only.
+- Liabilities are separate: funding cost is not netted into income or EaR, and the debt balance does not follow the
+  asset balance. The funding model counts contractual coupons (no discount amortization, hedge accounting or swaps),
+  uses a rule-based funding policy (constant balance, starting mix, a single call rule) rather than the desk's actual
+  decisions, and prices new debt at assumed spreads to SOFR and Treasuries. The sample book is bucketed from public
+  filings, not security-level data.
 
 ## 9. Troubleshooting
 
@@ -567,11 +646,13 @@ config/
   model_vendor.yaml       vendor emulation: extends model.yaml (own rates/outputs/validation/history/dashboard folders)
   prepay_params.yaml      prepayment model parameters
 ratemodel/                rate model: data.py, forwards.py, model.py, curve.py, baseline.py, scenarios.py, store.py
-mbs_lite/                 portfolio, prepayment, engine, risk, scenarios, validation (V4-V6, V8), history, dashboard writer
+mbs_lite/                 portfolio, prepayment, engine, risk, scenarios, funding, wholeloans, validation (V4-V6, V8), history, dashboard writer
   templates/              dashboard pages, incl. scenarios.js (Rate specific view), whitepaper.html + whitepaper.js
 calibration/              calibration.json (in use), archive/, income_validation.json (V5/V8)
 data/fred/                rate history cache (FRED format)
 data/portfolio/           sample_portfolio.csv
+data/liabilities/         sample_debt.csv (debt book for the Liabilities view, from Fannie Mae's Q3 2026 10-Q)
+data/whole_loans/         sample_loans.csv (illustrative single-family cohorts for the Whole loans view)
 tools/                    mock_history.py, estimator_study.py, vols_from_percentiles.py, compare_runs.py
 history/ear_history.csv   run history (11 mock + 1 real as-of date)
 dashboard/                generated: rebuilt by every official run (shipped as last built)

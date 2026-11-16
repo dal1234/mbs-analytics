@@ -61,6 +61,69 @@ scenarios:
     spread_ramp_months: 3
     prepay_mult: [0.75, 1.0, 1.25]    # on top of prepay.multiplier
 
+funding:
+  # Liabilities: interest expense on a debt book along the same rate scenarios and Monte Carlo paths
+  # (mbs_lite/funding.py; dashboard "Liabilities" view). SEPARATE from asset income for now: not netted into income/EaR.
+  enabled: true
+  file: ../data/liabilities/sample_debt.csv     # one row per instrument or bucket, face in $ millions (README 5b)
+  name: Sample agency debt book
+  source: >-
+    Built from Fannie Mae's Form 10-Q for Q3 2026 (Note 8 and Liquidity and Capital Management): balances, average
+    rates, maturity ranges and callable debt by group as of 2026-09-30, split into representative buckets. Carrying
+    amounts; UPB is about $3bn higher (net discount). Debt of consolidated trusts (MBS) is excluded.
+  balance: constant          # constant = new issues keep total debt at today's balance | runoff = no new issues
+  index: SOFR_1M             # floating-rate index and the base of discount-note yields
+  target_mix: current        # new issues restore the starting mix by type; or {discount_note: 0.2, floating: 0.3, ...}
+  new_issues:                # term and spread of new debt (spreads calibrated to Q3 2026 issuance: discount notes
+                             # 3.69% vs 1M SOFR about 3.67%; long-term about Treasuries + 10-20 bp)
+    discount_note: {term_months: 3, spread_bp: 0}                 # over 1M SOFR
+    floating: {term_months: 24, spread_bp: 10}                     # over 1M SOFR, reset monthly
+    fixed: {term_months: 36, spread_bp: 15}                        # over the Treasury curve at the term
+    callable: {term_months: 48, lockout_months: 12, spread_bp: 35}  # over the Treasury curve; callable after lockout
+  call_rule:
+    threshold_bp: 25         # call when the coupon exceeds the cost of replacing the remaining term by this much
+    refi_spread_bp: 35       # replacement cost = Treasury curve at the remaining term + this spread (the callable
+                             # new-issue spread: called debt is replaced with callable debt, which pays the option again)
+  reported:                  # reconciliation shown on the dashboard (10-Q Q3 2026, Analysis of Net Interest Income)
+    period: nine months to 2026-09-30
+    interest_expense_musd: 5208
+    average_debt_musd: 162159
+    cost_pct: 4.28
+    note: includes amortization of debt discounts and hedge accounting; the model counts contractual coupons only
+
+whole_loans:
+  # Single-family whole loans, RUNOFF ONLY and ILLUSTRATIVE (mbs_lite/wholeloans.py; dashboard "Whole loans" view).
+  # Cohort-level, constant monthly delinquency transitions, house prices and unemployment on a fixed baseline.
+  # Separate from the MBS income and EaR. Cash coupon only; principal and recoveries earn the reinvestment rate (SOFR).
+  enabled: true
+  file: ../data/whole_loans/sample_loans.csv
+  name: Sample single-family whole loans (illustrative)
+  source: >-
+    Illustrative cohorts sized like Fannie Mae's loss-mitigation loans ($54.5bn) plus legacy loans in its retained
+    mortgage portfolio (Form 10-Q Q3 2026). Balances, rates, LTVs and transition rates are illustrative, not data.
+  behavior:                  # monthly transition rates (shares of the balance in the state) and a prepayment multiplier
+    performing:   {roll_cd: 0.008, cure_dc: 0.50, roll_ds: 0.07, cure_sc: 0.135, liq_s: 0.025, prepay_mult: 1.0}
+    reperforming: {roll_cd: 0.025, cure_dc: 0.35, roll_ds: 0.15, cure_sc: 0.10,  liq_s: 0.025, prepay_mult: 0.6}
+    modified:     {roll_cd: 0.020, cure_dc: 0.35, roll_ds: 0.15, cure_sc: 0.10,  liq_s: 0.025, prepay_mult: 0.4}
+    delinquent_buyout: {roll_cd: 0.030, cure_dc: 0.30, roll_ds: 0.20, cure_sc: 0.135, liq_s: 0.025, prepay_mult: 0.5}
+    # roll_cd current -> 30-89 · cure_dc 30-89 -> current · roll_ds 30-89 -> 90+ · cure_sc 90+ -> current (cures and
+    # modifications) · liq_s 90+ -> liquidation. Performing and the 90+ exits are set from Fannie's 2026 single-family
+    # flows (10-Q Q3 2026: 90+ loans about 100k; 9 months of cures 64k, modifications 56k, liquidations 23k; 30-89 about
+    # 1.4% and 90+ 0.62% of loans); the reperforming, modified and buyout rates are illustrative multiples.
+  severity:
+    liquidation_cost: 0.25   # costs, carry and forgone interest as a share of the property value
+    min_severity: 0.05       # severity = max(min_severity, 1 - (1 - liquidation_cost) / LTV(t))
+  macro:                     # baseline paths, one value per year (or one number): held for every rate path
+    hpi_growth_pct: [3.0, 3.0, 3.0, 3.0, 3.0]
+    unemployment_pct: [4.3, 4.3, 4.3, 4.3, 4.3]
+    unemployment_elasticity: 1.0   # roll rates x (unemployment / unemployment at the start) ^ elasticity
+  reported:
+    period: Q3 2026
+    interest_income_musd: 697
+    average_balance_musd: 70623
+    yield_pct: 3.95
+    note: all mortgage loans of Fannie Mae (incl. multifamily and lender-liquidity loans), GAAP incl. discount accretion
+
 outputs:
   dir: ../outputs
   # CUSIP-level monthly detail (balance, scheduled paydown, prepaid UPB, interest, reinvestment) is always written for

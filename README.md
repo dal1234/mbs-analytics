@@ -272,7 +272,8 @@ base           the baseline itself = the EaR baseline; flat = today's rates held
 - V6 uses the immediate ±100/±200 bp scenarios. Up to income model 1.0.0 it moved every rate, the mortgage rate
   included, by the full shock.
 - Scenarios are views, not model settings: change them in `config/model.yaml` (`scenarios`) without revalidation.
-  Not covered: historical replays, named combined scenarios, realized-volatility and user-drawn paths.
+  Not covered: historical replays, named combined scenarios, realized-volatility and user-drawn paths. The **Custom**
+  option on the rate card is a drawing preview: you can draw a path and press Run, but nothing is calculated.
 
 ---
 

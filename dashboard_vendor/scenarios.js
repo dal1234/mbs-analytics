@@ -109,20 +109,80 @@ function rateShape(){
     <div style="color:#5B6572">Each shape moves the rate model's two factors: the short rate (1M SOFR) and the 10-year. The 1/2/5/30-year yields follow their calibrated loadings on the two factors, and the mortgage rate moves β = ${num(RSD.beta_mort, 3)} × the 10-year move, as on every Monte Carlo path.</div>
     <div style="color:#5B6572">Cards: today's curve (dashed), the base at +12m (thin) and the scenario at +12m. Δ figures are against the base at +12m. Gray dots in the quadrant are the parallel scenarios.</div></div></div></div>`; }
 
+// ---------------------------------------------------------------- custom path: PREVIEW (drawing only, nothing is calculated)
+// Drag across the forecast area to draw one rate, one point every 3 months; Run explains what a live version would do.
+const CPM = (() => { const a = [], H = RSD ? RSD.months : 60; for (let m = 0; m <= H; m += 3) a.push(m); return a; })();
+let CP = {}, CPY = null, CP_NAME = 'Custom 1', CP_LAST = null;
+const cpBase = k => RSD.rates[RBASE][k];
+const cpGet = k => CP[k] || (CP[k] = CPM.map(m => cpBase(k)[m]));
+const cpDrawn = () => Object.keys(RTN).filter(k => CP[k] && CP[k].some((v, i) => Math.abs(v - cpBase(k)[CPM[i]]) > 1e-9));
+const cpGeo = () => { const hv = RSD.history[RTEN] || [], nh = hv.length, H = CPM[CPM.length - 1], L = 50, R = 96, W = 720;
+  return {hv, nh, H, L, W, R, X: m => L + (m + nh) * (W - L - R) / (nh + H), M: x => (x - L) * (nh + H) / (W - L - R) - nh}; };
+function rateCustom(){
+  const k = RTEN, g0 = cpGeo(), {hv, nh, H, L, W, R, X} = g0, Tp = 30, B = 230, b = cpBase(k).slice(0, H + 1);
+  const all = hv.filter(v => v != null).concat(b), [lo, hi, step] = niceTicks(Math.max(0, Math.min(...all) - 3), Math.max(...all) + 3, 6);
+  CPY = {lo, hi, Tp, B};
+  const Yv = v => Tp + (hi - v) / (hi - lo) * (B - Tp), pt = (m, v) => X(m).toFixed(1) + ',' + Yv(v).toFixed(1), dec = step < 0.5 ? 2 : step < 1 ? 1 : 0;
+  let g = `<rect x="${L}" y="${Tp}" width="${(X(0) - L).toFixed(1)}" height="${B - Tp}" fill="#15202B" fill-opacity="0.04"/><rect x="${X(0).toFixed(1)}" y="${Tp}" width="${(X(H) - X(0)).toFixed(1)}" height="${B - Tp}" fill="#1F4E8C" fill-opacity="0.04"/>`;
+  for (let v = hi; v >= lo - 1e-9; v -= step) g += `<line x1="${L}" x2="${W - R + 6}" y1="${Yv(v).toFixed(1)}" y2="${Yv(v).toFixed(1)}" stroke="#E3E7EC"/>` + T(L - 6, (Yv(v) + 3).toFixed(1), v.toFixed(dec) + '%', {a: 'end'});
+  if (nh) g += T(L + 6, Tp + 14, 'ACTUAL', {w: 600});
+  g += T(X(0) + 6, Tp + 14, 'DRAW HERE · DRAG ACROSS THE MONTHS', {w: 600, f: '#1F4E8C'}) + `<line x1="${X(0)}" x2="${X(0)}" y1="${Tp}" y2="${B}" stroke="#5B6572"/>`;
+  for (let m = -nh; m <= H; m += 12) g += T(X(m).toFixed(1), B + 16, m === 0 ? 'Today' : (m > 0 ? '+' : MINUS) + Math.abs(m) + 'm', {a: 'middle', f: m === 0 ? '#15202B' : null, w: m === 0 ? 600 : 400});
+  if (nh) g += `<polyline points="${[...hv.map((v, i) => v == null ? null : pt(i - nh, v)), pt(0, b[0])].filter(Boolean).join(' ')}" fill="none" stroke="#15202B" stroke-width="2"/>`;
+  g += `<polyline points="${b.map((v, m) => pt(m, v)).join(' ')}" fill="none" stroke="#9AA4AF" stroke-width="1.5" stroke-dasharray="4 3"/>` + T(W - R + 10, (Yv(b[H]) + 12).toFixed(1), 'Base');
+  g += `<polyline id="cpLine" fill="none" stroke="#D9772B" stroke-width="2.5" stroke-linejoin="round"/><text id="cpEnd" x="${W - R + 10}" style="fill:#A84F15;font-weight:600">${esc(CP_NAME)}</text>`
+    + CPM.map((m, i) => `<circle id="cpH${i}" cx="${X(m).toFixed(1)}" r="${i ? 4 : 3.5}" fill="${i ? '#FFFFFF' : '#15202B'}" stroke="#D9772B" stroke-width="2"/>`).join('');
+  return `<svg id="cpSvg" viewBox="0 0 ${W} 260" width="100%" role="img" aria-label="Draw a custom path for the ${RTN[k][0]}" style="touch-action:none;cursor:crosshair">${g}</svg>
+  <div class="cpbar"><label class="lbl" for="cpName">Name</label><input id="cpName" maxlength="40" value="${esc(CP_NAME)}">
+   <button type="button" class="dl" onclick="cpReset()">Reset to base</button><button type="button" class="tb on" onclick="cpRun()">Run scenario</button></div>
+  <div class="note mono" id="cpSum" style="margin-top:0"></div>
+  <div class="mocknote" id="cpMsg" role="status" hidden></div>`; }
+function cpDraw(){
+  const svg = $('cpSvg'); if (!svg || !CPY) return;
+  const p = cpGet(RTEN), {lo, hi, Tp, B} = CPY, {X} = cpGeo(), Yv = v => Tp + (hi - v) / (hi - lo) * (B - Tp), n = CPM.length - 1;
+  $('cpLine').setAttribute('points', CPM.map((m, i) => X(m).toFixed(1) + ',' + Yv(p[i]).toFixed(1)).join(' '));
+  CPM.forEach((m, i) => $('cpH' + i).setAttribute('cy', Yv(p[i]).toFixed(1)));
+  $('cpEnd').setAttribute('y', (Yv(p[n]) - 8).toFixed(1));
+  const at = m => CPM.indexOf(m), bp = i => sgnbp(100 * (p[i] - cpBase(RTEN)[CPM[i]])) + ' bp vs base';
+  $('cpSum').textContent = `${RTN[RTEN][0]}: today ${p[0].toFixed(2)}%` + [12, 36, CPM[n]].filter((m, j, a) => at(m) > 0 && a.indexOf(m) === j)
+    .map(m => ` · +${m}m ${p[at(m)].toFixed(2)}% (${bp(at(m))})`).join(''); }
+function cpWire(){
+  const svg = $('cpSvg'); if (!svg) return; let down = false;
+  const set = e => { const q = svg.createSVGPoint(); q.x = e.clientX; q.y = e.clientY; const r = q.matrixTransform(svg.getScreenCTM().inverse());
+    const {M} = cpGeo(), H = CPM[CPM.length - 1], i = Math.round(Math.max(0, Math.min(H, M(r.x))) / 3); if (!i) return;
+    const v = Math.max(0, Math.min(CPY.hi, Math.round(20 * (CPY.hi - (r.y - CPY.Tp) / (CPY.B - CPY.Tp) * (CPY.hi - CPY.lo))) / 20)), p = cpGet(RTEN);
+    if (CP_LAST && CP_LAST[0] !== i) { const [j, w] = CP_LAST, s = i > j ? 1 : -1; for (let k = j + s; k !== i; k += s) p[k] = w + (v - w) * (k - j) / (i - j); }
+    p[i] = v; CP_LAST = [i, v]; $('cpMsg').hidden = true; cpDraw(); };
+  svg.addEventListener('pointerdown', e => { down = true; CP_LAST = null; try { svg.setPointerCapture(e.pointerId); } catch (x) {} set(e); e.preventDefault(); });
+  svg.addEventListener('pointermove', e => { if (down) set(e); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => svg.addEventListener(ev, () => { down = false; CP_LAST = null; }));
+  $('cpName').addEventListener('input', e => { CP_NAME = e.target.value.trim() || 'Custom 1'; $('cpEnd').textContent = CP_NAME; }); }
+function cpReset(){ delete CP[RTEN]; $('cpMsg').hidden = true; cpDraw(); }
+function cpRun(){
+  const drawn = cpDrawn().map(k => RTN[k][0]), m = $('cpMsg');
+  m.innerHTML = `<b>Preview: this scenario is not calculated in this version.</b> In a live version, <b>Run scenario</b> would build “${esc(CP_NAME)}” from the rates you drew and run it through the same engine as every other scenario. `
+    + (drawn.length ? `The rates you drew (${drawn.join(', ')}) would be used as given, between the points every 3 months; the rates you did not draw would follow the rate model: the mortgage rate β = ${num(RSD.beta_mort, 3)} × the 10-year change, the other Treasury tenors on their factor loadings. ` : 'You have not changed any rate from the base yet: drag across the shaded area to draw a path. ')
+    + `The scenario would then appear everywhere on this view: a row in the income sensitivity grid with its Monte Carlo percentile, the monthly income, drivers, attribution, cash flows and cohorts.`;
+  m.hidden = false; }
+
 function renderRateCard(){
-  $('rateFams').innerHTML = [['parallel', 'Parallel'], ['shape', 'Curve shape']].map(([k, l]) => `<button type="button" class="tb${RFAM === k ? ' on' : ''}" aria-pressed="${RFAM === k}" onclick="rpick('fam','${k}')">${l}</button>`).join('');
-  const shape = RFAM === 'shape', rm = (RSC[famIds('parallel_ramp')[0]] || {}).ramp;
+  $('rateFams').innerHTML = [['parallel', 'Parallel'], ['shape', 'Curve shape'], ['custom', 'Custom']].map(([k, l]) => `<button type="button" class="tb${RFAM === k ? ' on' : ''}" aria-pressed="${RFAM === k}" onclick="rpick('fam','${k}')">${l}${k === 'custom' ? '<span class="mocktag">preview</span>' : ''}</button>`).join('');
+  const shape = RFAM === 'shape', custom = RFAM === 'custom', rm = (RSC[famIds('parallel_ramp')[0]] || {}).ramp;
   // timing is a sub-option of the parallel family only
-  $('rateTiming').hidden = shape || !rm;
-  $('rateTiming').innerHTML = shape || !rm ? '' : `<span class="tsep" aria-hidden="true"></span><span class="lbl">Timing</span>`
+  $('rateTiming').hidden = RFAM !== 'parallel' || !rm;
+  $('rateTiming').innerHTML = RFAM !== 'parallel' || !rm ? '' : `<span class="tsep" aria-hidden="true"></span><span class="lbl">Timing</span>`
     + [[false, 'Immediate'], [true, `Ramped ${rm}m`]].map(([v, l]) => `<button type="button" class="tb sm${RRAMP === v ? ' on' : ''}" aria-pressed="${RRAMP === v}" onclick="rpick('ramp',${v})">${l}</button>`).join('');
   $('rateTenLbl').hidden = shape;
+  $('rateTenTxt').textContent = custom ? 'Rate to draw' : 'Rate shown';
   $('rateTenors').innerHTML = shape ? '' : Object.entries(RTN).map(([k, [, l]]) => `<button type="button" class="tb${RTEN === k ? ' on' : ''}" aria-pressed="${RTEN === k}" onclick="rpick('ten','${k}')">${l}</button>`).join('');
-  $('rateChart').innerHTML = shape ? rateShape() : rateTime();
-  $('rateTitle').firstChild.textContent = shape ? 'Curve shape scenarios' : `Rate paths — ${RTN[RTEN][0]}`;
+  $('rateChart').innerHTML = shape ? rateShape() : custom ? rateCustom() : rateTime();
+  if (custom) { cpWire(); cpDraw(); }
+  $('rateTitle').firstChild.textContent = shape ? 'Curve shape scenarios' : custom ? `Custom rate path — ${RTN[RTEN][0]}` : `Rate paths — ${RTN[RTEN][0]}`;
   $('rateSub').textContent = shape ? `Immediate shocks to the two model factors · curves at +12 months · on top of the ${RSD.baseline_type} baseline`
+    : custom ? `Draw your own path: drag across the shaded forecast area · one point every 3 months to +${CPM[CPM.length - 1]}m · pick the rate to draw below · base dashed`
     : `${(RSD.history.dates || []).length} months of actuals, then the ${RSD.baseline_type} baseline and ${famIds(parFam()).length} parallel shocks ${RRAMP ? `phased in over ${rm} months, then held` : 'from month 1'} · end labels: change vs base at the ${hlab()} horizon, bp`;
-  $('rateNote').innerHTML = shape ? '' : `Every Treasury tenor and 1M SOFR move the full shock; the mortgage rate moves <b>β = ${num(RSD.beta_mort, 3)}</b> × the shock, the calibrated pass-through of the 10-year to the mortgage rate (whitepaper 13.4). Rates are floored at ${num(100 * (D.rate_model.record.simulation.floor || 0), 1)}%, as on the Monte Carlo paths. Click a line to follow it.`; }
+  $('rateNote').innerHTML = shape ? '' : custom ? '<b>Preview of a future capability.</b> Drawing and Run work here, but no custom scenario is calculated in this version; the grid and the sections below show the configured scenarios only.'
+    : `Every Treasury tenor and 1M SOFR move the full shock; the mortgage rate moves <b>β = ${num(RSD.beta_mort, 3)}</b> × the shock, the calibrated pass-through of the 10-year to the mortgage rate (whitepaper 13.4). Rates are floored at ${num(100 * (D.rate_model.record.simulation.floor || 0), 1)}%, as on the Monte Carlo paths. Click a line to follow it.`; }
 
 // ---------------------------------------------------------------- sensitivity grid + overlays
 function gridSections(){

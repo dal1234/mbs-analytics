@@ -177,7 +177,7 @@ const LIM = [
   '<b>The rate model\'s own assumptions</b> (constant volatility, Gaussian shocks, a single correlation, an independent mortgage spread, the zero floor, a forward baseline that includes a term premium) are listed with their effects in whitepaper section 12.',
   '<b>Simplified prepayment model</b>: a pool-level S-curve with a handful of drivers, least tested deep in the money; governed separately from the rate model.',
   '<b>Representative outcomes are averages of paths</b> near a percentile, not single paths.',
-  '<b>Rate scenarios cover parallel and curve-shape moves only.</b> No historical replays (2013, 2020, 2022), named combined scenarios, realized-volatility paths or user-drawn paths; curve shapes are immediate and at one size. The spread and prepayment overlays apply to the Rate specific view, not to EaR.',
+  '<b>Rate scenarios cover parallel and curve-shape moves only.</b> No historical replays (2013, 2020, 2022), named combined scenarios, realized-volatility paths or user-drawn paths (the Custom option on the rate card is a drawing preview: nothing is calculated); curve shapes are immediate and at one size. The spread and prepayment overlays apply to the Rate specific view, not to EaR.',
   '<b>A rate scenario says nothing about likelihood.</b> Its percentile in the Monte Carlo distribution is shown beside it; immediate shocks sit deep in the tail at short horizons (whitepaper 11, note on V6).',
   '<b>History is a mock-up until real month-end runs accumulate.</b> Mock points use real rates and baselines but today\'s CUSIPs, and the current calibration.',
   '<b>Data quality is the user\'s responsibility.</b> The model trusts the portfolio file after the range checks in <code>run_model.py validate</code>.',

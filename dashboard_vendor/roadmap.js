@@ -50,18 +50,38 @@ const RM_MODELS = [
 ];
 
 const RM_TOOLS = [
-  ['Interest rate shocks', 'done', 'Parallel, ramped and curve-shape scenarios with overlays', '#rate'],
-  ['Earnings at risk', 'done', 'Monte Carlo EaR 95/99, expected shortfall, calibration range, history', '#ear'],
-  ['Rate-scenario attribution', 'done', 'MBS income change split into prepayment, reinvestment rate and interaction', '#rate'],
-  ['Funding cost at risk', 'wip', 'Debt interest on the same paths; separate from income', '#liab'],
-  ['Custom rate paths', 'wip', 'Drawing preview; not calculated', '#rate'],
-  ['Full NII attribution', 'todo', 'Volume, rate, prepayment, mix, funding and accounting effects on reported NII'],
-  ['Strategy and what-if analysis', 'wip', 'Purchase policy inputs exist in the NII engine; funding mix and hedge what-ifs not started'],
-  ['Return on equity', 'todo', 'Portfolio P&L after tax over ERCF-allocated capital'],
-  ['Optimization engine', 'todo', 'Choose purchases, funding and hedges for return per unit of capital and risk'],
-  ['Economic value of equity and duration gap', 'todo', 'Needs MBS pricing and the funding book together'],
-  ['Reconciliation to filings', 'wip', 'Debt, loan yield and reported NII references on each tab'],
-  ['Model validation and backtesting', 'wip', 'Rate model V1–V8 complete; prepayment backtests in progress'],
+  {group: 'Earnings', items: [
+    ['Interest rate shocks', 'done', 'Parallel, ramped and curve-shape scenarios with overlays', '#rate'],
+    ['Earnings at risk', 'done', 'Monte Carlo EaR 95/99, expected shortfall, calibration range, history', '#ear'],
+    ['Rate-scenario attribution', 'done', 'MBS income change split into prepayment, reinvestment rate and interaction', '#rate'],
+    ['Funding cost at risk', 'wip', 'Debt interest on the same paths; separate from income', '#liab'],
+    ['Full NII attribution', 'todo', 'Volume, rate, prepayment, mix, funding and accounting effects on reported NII'],
+    ['Prepayment model risk', 'wip', 'Prepayment multiplier overlays on the grid; model-vs-model comparison not started', '#rate'],
+    ['Spread and basis risk', 'wip', 'Income: mortgage-spread overlay. Value-based spread (OAS) and SOFR/Treasury basis risk not started', '#rate'],
+  ]},
+  {group: 'Value and hedging', items: [
+    ['Economic value of equity and duration gap', 'todo', 'Needs MBS pricing and the funding book together'],
+    ['Key-rate duration and convexity profile', 'todo', 'Assets, debt and hedges by key rate; needs MBS pricing (OAS)'],
+    ['Duration and convexity matching', 'todo', 'Funding and hedge mix that closes key-rate and convexity gaps: bullets vs callables, swaps, swaptions, futures'],
+  ]},
+  {group: 'Liquidity, capital and credit', items: [
+    ['Repricing gap and maturity ladder', 'wip', 'Debt maturity profile and 12-month repricing share; asset ladder and net gap not started', '#liab'],
+    ['Liquidity risk', 'todo', 'Stressed cash-flow gap, liquidity requirements, debt rollover'],
+    ['Capital planning and adequacy', 'todo', 'ERCF requirement projected by scenario'],
+    ['Credit stress testing', 'todo', 'House-price and unemployment shocks on whole loans'],
+  ]},
+  {group: 'Decision support', items: [
+    ['Custom rate paths', 'wip', 'Drawing preview; not calculated', '#rate'],
+    ['Strategy and what-if analysis', 'wip', 'Purchase policy inputs exist in the NII engine; funding mix and hedge what-ifs not started'],
+    ['Relative value for purchases', 'todo', 'OAS, spreads and breakevens by coupon; feeds strategy and optimization'],
+    ['Return on equity', 'todo', 'Portfolio P&L after tax over ERCF-allocated capital'],
+    ['Optimization engine', 'todo', 'Choose purchases, funding and hedges for return per unit of capital and risk'],
+  ]},
+  {group: 'Controls', items: [
+    ['Limit and risk-appetite monitoring', 'wip', 'EaR history exists; limits, breaches and escalation not started', '#ear'],
+    ['Reconciliation to filings', 'wip', 'Debt, loan yield and reported NII references on each tab'],
+    ['Model validation and backtesting', 'wip', 'Rate model V1–V8 complete; prepayment backtests in progress'],
+  ]},
 ];
 
 const RM_DATA = [
@@ -75,7 +95,7 @@ function rmCount(){
   const all = [];
   RM_NII.assets.forEach(g => g.rows ? g.rows.forEach(r => { all.push(r[1], r[2]); }) : all.push(...g.status));
   RM_NII.funding.forEach(r => { all.push(r[1], r[2]); }); all.push(RM_NII.result.status);
-  RM_OTHER.forEach(r => all.push(r[2])); RM_MODELS.forEach(r => all.push(r[1])); RM_TOOLS.forEach(r => all.push(r[1])); RM_DATA.forEach(r => all.push(r[1]));
+  RM_OTHER.forEach(r => all.push(r[2])); RM_MODELS.forEach(r => all.push(r[1])); RM_TOOLS.forEach(g => g.items.forEach(r => all.push(r[1]))); RM_DATA.forEach(r => all.push(r[1]));
   const c = {done: 0, wip: 0, todo: 0}; all.forEach(s => { if (c[s] != null) c[s]++; }); return c; }
 
 function renderTarget(){
@@ -101,11 +121,15 @@ function renderTarget(){
     </div></div>`;
 
   const card = (t, s, d, l, extra) => `<div class="rmcard" style="border-left-color:${RM_S[s][1]}" title="${esc(d)}"><div class="rmct"><span>${extra ? `<span class="rmsign">${extra}</span>` : ''}${t}${l ? ' ' + rmLink(l, '') : ''}</span>${rmPill(s, 1)}</div></div>`;
-  const other = `<div class="card stackc"><div><h2>Other income statement lines tied to capital markets</h2><div class="sub">Outside net interest income from portfolios; together with it they make the portfolio P&L</div></div>
-    <div class="rmgrid">${RM_OTHER.map(r => card(r[0], r[2], r[3], r[4], r[1])).join('')}</div></div>`;
-  const models = `<div class="card stackc"><div><h2>Behavioral and market models</h2><div class="sub">The pieces that take modeling effort, beyond an accounting calculator</div></div>
-    <div class="rmgrid">${RM_MODELS.map(r => card(r[0], r[1], r[2], r[3])).join('')}</div></div>`;
-  const tools = `<div class="card stackc"><div><h2>Analytics this enables</h2><div class="sub">Tools that sit on top of the income, funding and behavioral models</div></div>
-    <div class="rmgrid">${RM_TOOLS.map(r => card(r[0], r[1], r[2], r[3])).join('')}</div></div>`;
-  const data = `<div class="card stackc"><div><h2>Data foundations</h2></div><div class="rmchips">${RM_DATA.map(([t, s]) => `<span class="rmchip" style="border-color:${RM_S[s][1]}66">${t} ${rmPill(s, 1)}</span>`).join('')}</div></div>`;
-  el.innerHTML = head + nii + `<div class="row">${other}${tools}</div>` + models + data; }
+  // a category as a vertical list, items grouped under Complete / In progress / Not started
+  const slist = items => ['done', 'wip', 'todo'].map(s => { const it = items.filter(x => x.s === s);
+    return it.length ? `<div class="rsg"><div class="rsh">${rmPill(s, 1)}<span class="rsn">${it.length}</span></div><ul class="rsl" style="border-left-color:${RM_S[s][1]}">`
+      + it.map(x => `<li title="${esc(x.d || '')}">${x.sign ? `<span class="rmsign">${x.sign}</span>` : ''}${x.t}${x.l ? ' ' + rmLink(x.l, '') : ''}</li>`).join('') + '</ul></div>' : ''; }).join('');
+  const col = (title, items) => `<div class="rcol"><div class="rct">${title}</div>${slist(items)}</div>`;
+  const tools = `<div class="card stackc"><div><h2>Analytics this enables</h2><div class="sub">Tools that sit on top of the income, funding and behavioral models · hover an item for detail</div></div>
+    <div class="rcols">${RM_TOOLS.map(g => col(g.group, g.items.map(r => ({t: r[0], s: r[1], d: r[2], l: r[3]})))).join('')}</div></div>`;
+  const parts = `<div class="card stackc"><div><h2>What it is built from</h2><div class="sub">Income statement lines outside portfolio NII, the behavioral and market models, and the data underneath</div></div>
+    <div class="rcols">${col('Other income statement lines', RM_OTHER.map(r => ({t: r[0], sign: r[1], s: r[2], d: r[3], l: r[4]})))}
+    ${col('Behavioral and market models', RM_MODELS.map(r => ({t: r[0], s: r[1], d: r[2], l: r[3]})))}
+    ${col('Data foundations', RM_DATA.map(([t, s]) => ({t, s})))}</div></div>`;
+  el.innerHTML = head + nii + tools + parts; }
